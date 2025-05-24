@@ -2,7 +2,7 @@
 // Konfigurasi koneksi database
 define('DB_SERVER', 'localhost');
 define('DB_USERNAME', 'root'); // Ganti dengan username database Anda
-define('DB_PASSWORD', '');     // Ganti dengan password database Anda
+define('DB_PASSWORD', 'root');     // Ganti dengan password database Anda
 define('DB_NAME', 'qurban_app_db'); // Ganti dengan nama database Anda
 
 // Buat koneksi
