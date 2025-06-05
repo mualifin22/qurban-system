@@ -9,8 +9,9 @@ function verifyPassword($password, $hashedPassword) {
     return password_verify($password, $hashedPassword);
 }
 
+// Fungsi-fungsi berikut TIDAK lagi memanggil session_start()
+// Karena kita berasumsi session sudah dimulai di header.php atau auth.php
 function isLoggedIn() {
-    session_start();
     return isset($_SESSION['user_id']);
 }
 
@@ -20,22 +21,18 @@ function redirectToLogin() {
 }
 
 function isAdmin() {
-    session_start();
     return isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
 }
 
 function isPanitia() {
-    session_start();
     return isset($_SESSION['role']) && $_SESSION['role'] === 'panitia';
 }
 
 function isBerqurban() {
-    session_start();
     return isset($_SESSION['role']) && $_SESSION['role'] === 'berqurban';
 }
 
 function isWarga() {
-    session_start();
     return isset($_SESSION['role']) && $_SESSION['role'] === 'warga';
 }
 
@@ -54,7 +51,7 @@ function formatRupiah($amount) {
 
 // Fungsi untuk mendapatkan data user yang sedang login
 function getCurrentUser($conn) {
-    session_start();
+    // Session harus sudah aktif sebelum memanggil fungsi ini
     if (isset($_SESSION['user_id'])) {
         $user_id = $_SESSION['user_id'];
         $stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");

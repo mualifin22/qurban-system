@@ -42,7 +42,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Jika diakses langsung tanpa POST, redirect ke halaman login
     redirectToLogin();
 }
-
 // public/auth.php
 // ... kode sebelumnya ...
 
