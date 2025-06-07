@@ -1,24 +1,37 @@
 <?php
-include '../../includes/header.php'; // Sesuaikan path
+// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
-$nik = $nama = $alamat = $no_hp = $status_qurban = '';
-$status_panitia = 0; // Default: bukan panitia
+include '../../includes/db.php';
+include '../../includes/functions.php';
+
+if (session_status() == PHP_SESSION_NONE) {
+    session_start();
+}
+
+if (!isLoggedIn()) {
+    redirectToLogin();
+}
+
+$nik = '';
+$nama = '';
+$alamat = '';
+$no_hp = '';
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $nik = sanitizeInput($_POST['nik']);
-    $nama = sanitizeInput($_POST['nama']);
-    $alamat = sanitizeInput($_POST['alamat']);
-    $no_hp = sanitizeInput($_POST['no_hp']);
-    $status_qurban = sanitizeInput($_POST['status_qurban']);
-    $status_panitia = isset($_POST['status_panitia']) ? 1 : 0;
+    $nik = sanitizeInput($_POST['nik'] ?? '');
+    $nama = sanitizeInput($_POST['nama'] ?? '');
+    $alamat = sanitizeInput($_POST['alamat'] ?? '');
+    $no_hp = sanitizeInput($_POST['no_hp'] ?? '');
+    $create_user = isset($_POST['create_user']) ? 1 : 0; // Apakah checkbox 'Buat Akun Login' dicentang?
 
     // Validasi
     if (empty($nik)) { $errors[] = "NIK wajib diisi."; }
     if (empty($nama)) { $errors[] = "Nama wajib diisi."; }
-    if (!in_array($status_qurban, ['peserta', 'penerima', 'tidak_ikut'])) {
-        $errors[] = "Status qurban tidak valid.";
-    }
+    if (!preg_match('/^[0-9]{16}$/', $nik)) { $errors[] = "NIK harus 16 digit angka."; }
 
     // Cek duplikasi NIK
     $stmt_check_nik = $conn->prepare("SELECT nik FROM warga WHERE nik = ?");
@@ -31,48 +44,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $stmt_check_nik->close();
 
     if (empty($errors)) {
-        $stmt = $conn->prepare("INSERT INTO warga (nik, nama, alamat, no_hp, status_qurban, status_panitia) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("sssssi", $nik, $nama, $alamat, $no_hp, $status_qurban, $status_panitia);
+        $conn->begin_transaction();
 
-        if ($stmt->execute()) {
-            $_SESSION['message'] = "Data warga berhasil ditambahkan.";
-            $_SESSION['message_type'] = "success";
+        try {
+            // 1. Masukkan data warga baru
+            // Default status_qurban adalah 'penerima'
+            $status_qurban_default = 'penerima';
+            $stmt_warga = $conn->prepare("INSERT INTO warga (nik, nama, alamat, no_hp, status_qurban) VALUES (?, ?, ?, ?, ?)");
+            $stmt_warga->bind_param("sssss", $nik, $nama, $alamat, $no_hp, $status_qurban_default);
+            $stmt_warga->execute();
+            if ($stmt_warga->error) {
+                throw new mysqli_sql_exception("Error saat menambahkan data warga: " . $stmt_warga->error);
+            }
+            $stmt_warga->close();
 
-            // Jika warga ini adalah peserta qurban, buat juga user login untuk dia
-            if ($status_qurban === 'peserta' || $status_panitia === 1) {
-                $username_warga = $nik; // NIK sebagai username default
-                $password_default = hashPassword('qurbanrt001'); // Password default, bisa diganti
-                $role_user = ($status_qurban === 'peserta' && $status_panitia === 0) ? 'berqurban' : (($status_panitia === 1) ? 'panitia' : 'warga'); // Berqurban kalau dia peserta tapi bukan panitia, panitia kalau dia panitia.
-
-                // Cek apakah user dengan NIK ini sudah ada di tabel users
-                $stmt_check_user = $conn->prepare("SELECT id FROM users WHERE nik_warga = ?");
-                $stmt_check_user->bind_param("s", $nik);
-                $stmt_check_user->execute();
-                $stmt_check_user->store_result();
-                if ($stmt_check_user->num_rows == 0) { // Jika belum ada, baru insert
-                     $stmt_insert_user = $conn->prepare("INSERT INTO users (username, password, role, nik_warga) VALUES (?, ?, ?, ?)");
-                     $stmt_insert_user->bind_param("ssss", $username_warga, $password_default, $role_user, $nik);
-                     if ($stmt_insert_user->execute()) {
-                         $_SESSION['message'] .= " Akun login (" . $username_warga . ") untuk warga ini juga berhasil dibuat.";
-                     } else {
-                         $_SESSION['message'] .= " Namun, gagal membuat akun login untuk warga ini: " . $stmt_insert_user->error;
-                     }
-                     $stmt_insert_user->close();
-                } else {
-                     $_SESSION['message'] .= " Akun login untuk warga ini sudah ada.";
+            // 2. Buat user login jika dicentang
+            if ($create_user) {
+                $username_user = $nik; // Default username adalah NIK
+                $password_default = hashPassword('password'); // Password default
+                $role_user = 'warga'; // Default role adalah 'warga', bisa berubah jadi 'berqurban' atau 'panitia' nanti
+                $stmt_user = $conn->prepare("INSERT INTO users (username, password, role, nik_warga) VALUES (?, ?, ?, ?)");
+                $stmt_user->bind_param("ssss", $username_user, $password_default, $role_user, $nik);
+                $stmt_user->execute();
+                if ($stmt_user->error) {
+                    throw new mysqli_sql_exception("Error saat membuat user login: " . $stmt_user->error);
                 }
-                $stmt_check_user->close();
+                $stmt_user->close();
             }
 
+            $conn->commit();
+            $_SESSION['message'] = "Data warga berhasil ditambahkan.";
+            if ($create_user) {
+                $_SESSION['message'] .= " Akun login untuk warga ini juga berhasil dibuat.";
+            }
+            $_SESSION['message_type'] = "success";
             header("Location: index.php");
             exit();
-        } else {
-            $errors[] = "Gagal menambahkan data warga: " . $stmt->error;
+
+        } catch (mysqli_sql_exception $e) {
+            $conn->rollback();
+            $errors[] = "Gagal menambahkan data warga: " . $e->getMessage();
+            $_SESSION['message'] = "Gagal menambahkan data warga: " . $e->getMessage();
+            $_SESSION['message_type'] = "error";
+            $_SESSION['form_data'] = $_POST;
+            header("Location: add.php");
+            exit();
         }
-        $stmt->close();
+    } else {
+        $_SESSION['errors'] = $errors;
+        $_SESSION['form_data'] = $_POST;
+        header("Location: add.php");
+        exit();
+    }
+} else {
+    // Jika bukan POST, tampilkan form (dengan data yang mungkin tersimpan di session)
+    if (isset($_SESSION['form_data'])) {
+        $nik = $_SESSION['form_data']['nik'] ?? '';
+        $nama = $_SESSION['form_data']['nama'] ?? '';
+        $alamat = $_SESSION['form_data']['alamat'] ?? '';
+        $no_hp = $_SESSION['form_data']['no_hp'] ?? '';
+        unset($_SESSION['form_data']);
+    }
+    if (isset($_SESSION['errors'])) {
+        $errors = $_SESSION['errors'];
+        unset($_SESSION['errors']);
     }
 }
 ?>
+
+<?php include '../../includes/header.php'; ?>
 
 <div class="container">
     <h2>Tambah Data Warga Baru</h2>
@@ -84,14 +124,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         echo '</div>';
     }
+    if (isset($_SESSION['message'])) {
+        echo '<div class="message ' . $_SESSION['message_type'] . '">' . $_SESSION['message'] . '</div>';
+        unset($_SESSION['message']);
+        unset($_SESSION['message_type']);
+    }
     ?>
     <form action="" method="POST">
         <div class="form-group">
-            <label for="nik">NIK:</label>
+            <label for="nik">NIK (16 Digit):</label>
             <input type="text" id="nik" name="nik" value="<?php echo htmlspecialchars($nik); ?>" required>
         </div>
         <div class="form-group">
-            <label for="nama">Nama:</label>
+            <label for="nama">Nama Lengkap:</label>
             <input type="text" id="nama" name="nama" value="<?php echo htmlspecialchars($nama); ?>" required>
         </div>
         <div class="form-group">
@@ -100,24 +145,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
         <div class="form-group">
             <label for="no_hp">No. HP:</label>
-            <input type="text" id="no_hp" name="no_hp" value="<?php echo htmlspecialchars($no_hp); ?>">
+            <input type="tel" id="no_hp" name="no_hp" value="<?php echo htmlspecialchars($no_hp); ?>">
         </div>
         <div class="form-group">
-            <label for="status_qurban">Status Qurban:</label>
-            <select id="status_qurban" name="status_qurban" required>
-                <option value="tidak_ikut" <?php echo ($status_qurban == 'tidak_ikut') ? 'selected' : ''; ?>>Tidak Ikut</option>
-                <option value="peserta" <?php echo ($status_qurban == 'peserta') ? 'selected' : ''; ?>>Peserta Qurban</option>
-                <option value="penerima" <?php echo ($status_qurban == 'penerima') ? 'selected' : ''; ?>>Penerima Daging</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <input type="checkbox" id="status_panitia" name="status_panitia" value="1" <?php echo ($status_panitia == 1) ? 'checked' : ''; ?>>
-            <label for="status_panitia">Panitia</label>
+            <input type="checkbox" id="create_user" name="create_user" value="1">
+            <label for="create_user">Buat Akun Login untuk Warga ini</label>
+            <small>Jika dicentang, akun login dengan username = NIK dan password default akan dibuat.</small>
         </div>
         <button type="submit" class="btn btn-primary">Simpan</button>
         <a href="index.php" class="btn btn-secondary" style="background-color: #6c757d;">Batal</a>
     </form>
 </div>
-<?php
-include '../../includes/footer.php'; // Sesuaikan path
-?>
+<?php include '../../includes/footer.php'; ?>

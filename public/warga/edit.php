@@ -27,7 +27,7 @@ if (isset($_GET['nik'])) {
 }
 
 $nik = $nama = $alamat = $no_hp = $status_qurban = '';
-$status_panitia = 0;
+$status_panitia = 0; // Data dari DB
 $errors = []; // Untuk menampilkan error jika ada redirect balik dari update_warga.php
 
 // Ambil data warga yang akan diedit
@@ -52,6 +52,30 @@ if ($result_get->num_rows > 0) {
 }
 $stmt_get->close();
 
+// Cek keterikatan qurban untuk menentukan apakah status_qurban bisa diubah
+$can_change_status_qurban = true;
+$keterangan_keterikatan = '';
+
+// Cek apakah NIK ini masih menjadi peserta di hewan qurban lain (kambing)
+$stmt_check_kambing_qurban = $conn->prepare("SELECT COUNT(*) FROM hewan_qurban WHERE nik_peserta_tunggal = ?");
+$stmt_check_kambing_qurban->bind_param("s", $nik);
+$stmt_check_kambing_qurban->execute();
+$is_kambing_participant = ($stmt_check_kambing_qurban->get_result()->fetch_row()[0] > 0);
+$stmt_check_kambing_qurban->close();
+
+// Cek apakah NIK ini masih menjadi peserta di hewan qurban lain (sapi)
+$stmt_check_sapi_qurban = $conn->prepare("SELECT COUNT(*) FROM peserta_sapi WHERE nik_warga = ?");
+$stmt_check_sapi_qurban->bind_param("s", $nik);
+$stmt_check_sapi_qurban->execute();
+$is_sapi_participant = ($stmt_check_sapi_qurban->get_result()->fetch_row()[0] > 0);
+$stmt_check_sapi_qurban->close();
+
+if ($is_kambing_participant || $is_sapi_participant) {
+    $can_change_status_qurban = false;
+    $keterangan_keterikatan = "Warga ini terdaftar sebagai peserta Qurban. Status Qurban tidak dapat diubah secara manual.";
+}
+
+
 // Ambil pesan error/sukses dari session jika ada (dari update_warga.php)
 if (isset($_SESSION['errors'])) {
     $errors = $_SESSION['errors'];
@@ -59,13 +83,14 @@ if (isset($_SESSION['errors'])) {
 }
 if (isset($_SESSION['form_data'])) {
     // Jika ada data form yang dikirim balik (misal karena error), gunakan data itu
-    $nik = $_SESSION['form_data']['nik'];
-    $nama = $_SESSION['form_data']['nama'];
-    $alamat = $_SESSION['form_data']['alamat'];
-    $no_hp = $_SESSION['form_data']['no_hp'];
-    $status_qurban = $_SESSION['form_data']['status_qurban'];
-    $status_panitia = isset($_SESSION['form_data']['status_panitia']) ? 1 : 0;
+    $nik = $_SESSION['form_data']['nik'] ?? '';
+    $nama = $_SESSION['form_data']['nama'] ?? '';
+    $alamat = $_SESSION['form_data']['alamat'] ?? '';
+    $no_hp = $_SESSION['form_data']['no_hp'] ?? '';
+    $status_qurban_form_value = $_SESSION['form_data']['status_qurban'] ?? $status_qurban; // Ambil dari form_data atau dari DB
     unset($_SESSION['form_data']);
+} else {
+    $status_qurban_form_value = $status_qurban; // Jika tidak ada form_data, gunakan data dari DB
 }
 
 ?>
@@ -88,7 +113,8 @@ if (isset($_SESSION['form_data'])) {
         unset($_SESSION['message_type']);
     }
     ?>
-    <form action="update_warga.php" method="POST"> <input type="hidden" name="nik_original" value="<?php echo htmlspecialchars($nik_to_edit); ?>">
+    <form action="update_warga.php" method="POST">
+        <input type="hidden" name="nik_original" value="<?php echo htmlspecialchars($nik_to_edit); ?>">
         <div class="form-group">
             <label for="nik">NIK:</label>
             <input type="text" id="nik" name="nik" value="<?php echo htmlspecialchars($nik); ?>" required>
@@ -105,18 +131,19 @@ if (isset($_SESSION['form_data'])) {
             <label for="no_hp">No. HP:</label>
             <input type="text" id="no_hp" name="no_hp" value="<?php echo htmlspecialchars($no_hp); ?>">
         </div>
-        <div class="form-group">
+        <!-- <div class="form-group">
             <label for="status_qurban">Status Qurban:</label>
-            <select id="status_qurban" name="status_qurban" required>
-                <option value="tidak_ikut" <?php echo ($status_qurban == 'tidak_ikut') ? 'selected' : ''; ?>>Tidak Ikut</option>
-                <option value="peserta" <?php echo ($status_qurban == 'peserta') ? 'selected' : ''; ?>>Peserta Qurban</option>
-                <option value="penerima" <?php echo ($status_qurban == 'penerima') ? 'selected' : ''; ?>>Penerima Daging</option>
+            <select id="status_qurban" name="status_qurban" <?php echo $can_change_status_qurban ? '' : 'disabled'; ?>>
+                <option value="penerima" <?php echo ($status_qurban_form_value == 'penerima') ? 'selected' : ''; ?>>Penerima Daging</option>
+                <option value="tidak_ikut" <?php echo ($status_qurban_form_value == 'tidak_ikut') ? 'selected' : ''; ?>>Tidak Ikut</option>
             </select>
-        </div>
-        <div class="form-group">
-            <input type="checkbox" id="status_panitia" name="status_panitia" value="1" <?php echo ($status_panitia == 1) ? 'checked' : ''; ?>>
-            <label for="status_panitia">Panitia</label>
-        </div>
+            <?php if (!$can_change_status_qurban): ?>
+                <input type="hidden" name="status_qurban" value="<?php echo htmlspecialchars($status_qurban); ?>">
+                <small style="color: orange; display: block; margin-top: 5px;"><?php echo htmlspecialchars($keterangan_keterikatan); ?> Status ini otomatis diatur oleh sistem berdasarkan partisipasi Qurban.</small>
+            <?php else: ?>
+                <small style="display: block; margin-top: 5px;">Status ini akan diatur otomatis jika warga berpartisipasi Qurban.</small>
+            <?php endif; ?>
+        </div> -->
         <button type="submit" class="btn btn-primary">Simpan Perubahan</button>
         <a href="index.php" class="btn btn-secondary" style="background-color: #6c757d;">Batal</a>
     </form>
