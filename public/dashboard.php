@@ -1,149 +1,225 @@
 <?php
-// public/dashboard.php
-session_start(); // Pastikan session dimulai di setiap halaman yang membutuhkan session
+// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
+// ini_set('display_errors', 1);
+// ini_set('display_startup_errors', 1);
+// error_reporting(E_ALL);
 
 include '../includes/db.php';
 include '../includes/functions.php';
 
-// Cek apakah user sudah login, jika belum redirect ke halaman login
+if (session_status() == PHP_SESSION_NONE) {
+    session_start();
+}
+
 if (!isLoggedIn()) {
     redirectToLogin();
 }
 
 $userRole = $_SESSION['role'];
 $username = $_SESSION['username'];
-
-// Ambil data user lengkap jika diperlukan
 $currentUser = getCurrentUser($conn);
 
+// --- Ambil Data untuk Ringkasan Dashboard ---
+// Total Hewan Qurban
+$total_hewan_qurban = 0;
+$result_hewan = $conn->query("SELECT COUNT(*) AS total FROM hewan_qurban");
+if ($result_hewan) {
+    $total_hewan_qurban = $result_hewan->fetch_assoc()['total'];
+}
+
+// Total Pemasukan Keuangan
+$total_pemasukan_keuangan = 0;
+$result_pemasukan = $conn->query("SELECT SUM(jumlah) AS total FROM keuangan WHERE jenis = 'pemasukan'");
+if ($result_pemasukan) {
+    $total_pemasukan_keuangan = $result_pemasukan->fetch_assoc()['total'];
+}
+
+// Total Pengeluaran Keuangan
+$total_pengeluaran_keuangan = 0;
+$result_pengeluaran = $conn->query("SELECT SUM(jumlah) AS total FROM keuangan WHERE jenis = 'pengeluaran'");
+if ($result_pengeluaran) {
+    $total_pengeluaran_keuangan = $result_pengeluaran->fetch_assoc()['total'];
+}
+$saldo_keuangan = $total_pemasukan_keuangan - $total_pengeluaran_keuangan;
+
+// Total Warga Terdaftar
+$total_warga = 0;
+$result_warga = $conn->query("SELECT COUNT(*) AS total FROM warga");
+if ($result_warga) {
+    $total_warga = $result_warga->fetch_assoc()['total'];
+}
+
+// Total Penerima Daging (dari rencana pembagian)
+$total_penerima_daging = 0;
+$result_penerima_daging = $conn->query("SELECT COUNT(DISTINCT nik_warga) AS total FROM pembagian_daging");
+if ($result_penerima_daging) {
+    $total_penerima_daging = $result_penerima_daging->fetch_assoc()['total'];
+}
+
+// =========================================================================
+// Bagian Tampilan HTML (Dimulai setelah semua logika PHP selesai)
+// =========================================================================
+include '../includes/header.php'; // HEADER BARU
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Sistem Qurban RT 001</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
-            margin: 0;
-            padding: 0;
-        }
-        .header {
-            background-color: #333;
-            color: white;
-            padding: 15px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .header h1 {
-            margin: 0;
-            font-size: 24px;
-        }
-        .header nav ul {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-        }
-        .header nav ul li {
-            display: inline;
-            margin-left: 20px;
-        }
-        .header nav ul li a {
-            color: white;
-            text-decoration: none;
-        }
-        .header nav ul li a:hover {
-            text-decoration: underline;
-        }
-        .container {
-            padding: 20px;
-        }
-        .welcome-message {
-            background-color: #e0ffe0;
-            border: 1px solid #a0ffa0;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            color: #333;
-        }
-        .role-info {
-            font-weight: bold;
-            text-transform: capitalize;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>Sistem Qurban RT 001</h1>
-        <nav>
-            <ul>
-                <li><a href="dashboard.php">Dashboard</a></li>
-                <?php if (isAdmin()): ?>
-                    <li><a href="admin/users.php">Manajemen User</a></li>
-                <?php endif; ?>
-                <?php if (isAdmin() || isPanitia()): ?>
-                    <li><a href="warga/index.php">Data Warga</a></li>
-                    <li><a href="qurban/index.php">Data Qurban</a></li>
-                    <li><a href="keuangan/index.php">Keuangan</a></li>
-                    <li><a href="qurban/pembagian.php">Pembagian Daging</a></li>
-                <?php endif; ?>
-                <?php if (isBerqurban()): ?>
-                    <li><a href="qurban/my_qurban.php">Qurban Saya</a></li>
-                <?php endif; ?>
-                <?php if (isWarga() || isBerqurban() || isPanitia()): ?>
-                    <li><a href="warga/qrcode.php">Kartu Qurban</a></li>
-                <?php endif; ?>
-                <li><a href="auth.php?logout=true">Logout</a></li>
-            </ul>
-        </nav>
-    </div>
 
-    <div class="container">
-        <div class="welcome-message">
-            <h2>Selamat datang, <?php echo htmlspecialchars($username); ?>!</h2>
-            <p>Anda login sebagai: <span class="role-info"><?php echo htmlspecialchars($userRole); ?></span>.</p>
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">Dashboard</h1>
+</div>
+
+<?php
+// Tampilkan pesan sukses/error/info (yang kita simpan di $_SESSION)
+if (isset($_SESSION['message'])) {
+    echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : ($_SESSION['message_type'] == 'info' ? 'info' : 'success')) . ' alert-dismissible fade show" role="alert">';
+    echo htmlspecialchars($_SESSION['message']);
+    echo '<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>';
+    echo '</div>';
+    unset($_SESSION['message']);
+    unset($_SESSION['message_type']);
+}
+?>
+
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Selamat Datang, <?php echo htmlspecialchars($username); ?>!</h6>
+    </div>
+    <div class="card-body">
+        <p class="mb-0">Anda login sebagai: <span class="badge badge-info"><?php echo htmlspecialchars(ucfirst($userRole)); ?></span>.</p>
+        <p class="mb-0">Di sini Anda bisa melihat ringkasan data dan mengakses fitur-fitur utama sistem.</p>
+    </div>
+</div>
+
+<?php if (isAdmin() || isPanitia()): ?>
+<div class="row">
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-primary shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                            Total Hewan Qurban</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800"><?php echo htmlspecialchars($total_hewan_qurban); ?> Ekor</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-sheep fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
         </div>
-
-        <h3>Informasi Umum</h3>
-        <p>Ini adalah halaman dashboard. Konten di sini akan bervariasi sesuai dengan peran Anda.</p>
-
-        <?php if (isAdmin()): ?>
-            <p>Sebagai Admin, Anda memiliki akses penuh ke semua fitur sistem.</p>
-            <ul>
-                <li><a href="admin/users.php">Kelola Pengguna</a></li>
-                <li><a href="warga/index.php">Kelola Data Warga</a></li>
-                <li><a href="qurban/index.php">Kelola Data Hewan Qurban</a></li>
-                <li><a href="keuangan/index.php">Kelola Keuangan</a></li>
-                <li><a href="qurban/pembagian.php">Atur Pembagian Daging</a></li>
-            </ul>
-        <?php elseif (isPanitia()): ?>
-            <p>Sebagai Panitia, Anda bertanggung jawab untuk mengelola data qurban, keuangan, dan proses pembagian daging.</p>
-            <ul>
-                <li><a href="warga/index.php">Lihat Data Warga</a></li>
-                <li><a href="qurban/index.php">Lihat Data Hewan Qurban</a></li>
-                <li><a href="keuangan/index.php">Lihat Rekapan Keuangan</a></li>
-                <li><a href="qurban/pembagian.php">Kelola Pembagian Daging</a></li>
-                <li><a href="warga/qrcode.php">Cetak/Scan QR Code Warga</a></li>
-            </ul>
-        <?php elseif (isBerqurban()): ?>
-            <p>Terima kasih telah berpartisipasi dalam qurban. Anda dapat melihat detail qurban Anda di sini.</p>
-            <ul>
-                <li><a href="qurban/my_qurban.php">Lihat Detail Qurban Saya</a></li>
-                <li><a href="warga/qrcode.php">Unduh Kartu Qurban Digital</a></li>
-            </ul>
-        <?php elseif (isWarga()): ?>
-            <p>Selamat datang warga RT 001. Anda dapat mengunduh kartu pengambilan daging di sini.</p>
-            <ul>
-                <li><a href="warga/qrcode.php">Unduh Kartu Pengambilan Daging</a></li>
-            </ul>
-        <?php endif; ?>
     </div>
 
-    <div class="footer">
-        <p>&copy; <?php echo date('Y'); ?> Sistem Qurban RT 001. Dibuat oleh Mahasiswa Informatika.</p>
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-success shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                            Total Pemasukan Keuangan</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800"><?php echo formatRupiah($total_pemasukan_keuangan); ?></div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-dollar-sign fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-</body>
-</html>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-info shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Total Saldo Keuangan
+                        </div>
+                        <div class="row no-gutters align-items-center">
+                            <div class="col-auto">
+                                <div class="h5 mb-0 mr-3 font-weight-bold text-gray-800"><?php echo formatRupiah($saldo_keuangan); ?></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-balance-scale-left fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-warning shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                            Total Penerima Daging (Rencana)</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800"><?php echo htmlspecialchars($total_penerima_daging); ?> Orang</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-users fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Akses Cepat</h6>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <?php if (isAdmin()): ?>
+                <div class="col-md-6 mb-3">
+                    <h5><i class="fas fa-user-cog"></i> Admin Panel</h5>
+                    <ul class="list-unstyled">
+                        <li><a href="admin/users.php">Kelola Pengguna Sistem</a></li>
+                        <li><a href="warga/index.php">Lihat & Kelola Semua Data Warga</a></li>
+                        <li><a href="qurban/index.php">Lihat & Kelola Data Hewan Qurban</a></li>
+                        <li><a href="keuangan/index.php">Lihat & Kelola Rekapan Keuangan</a></li>
+                        <li><a href="qurban/pembagian.php">Atur & Pantau Pembagian Daging</a></li>
+                    </ul>
+                </div>
+            <?php endif; ?>
+
+            <?php if (isPanitia()): ?>
+                <div class="col-md-6 mb-3">
+                    <h5><i class="fas fa-user-tie"></i> Tugas Panitia</h5>
+                    <ul class="list-unstyled">
+                        <li><a href="warga/index.php">Data Warga (Lihat)</a></li>
+                        <li><a href="qurban/index.php">Data Hewan Qurban (Lihat)</a></li>
+                        <li><a href="keuangan/index.php">Rekapan Keuangan (Lihat)</a></li>
+                        <li><a href="qurban/pembagian.php">Kelola Status Pembagian Daging</a></li>
+                        <li><a href="warga/qrcode.php">Cetak / Scan Kartu QR Code</a></li>
+                    </ul>
+                </div>
+            <?php endif; ?>
+
+            <?php if (isBerqurban()): ?>
+                <div class="col-md-6 mb-3">
+                    <h5><i class="fas fa-hand-holding-heart"></i> Informasi Qurban Anda</h5>
+                    <ul class="list-unstyled">
+                        <li><a href="qurban/my_qurban.php">Lihat Detail Qurban yang Anda Ikuti</a></li>
+                        <li><a href="warga/qrcode.php">Unduh Kartu Qurban Digital Anda</a></li>
+                    </ul>
+                </div>
+            <?php endif; ?>
+
+            <?php if (isWarga()): ?>
+                <div class="col-md-6 mb-3">
+                    <h5><i class="fas fa-home"></i> Informasi Warga</h5>
+                    <ul class="list-unstyled">
+                        <li><a href="warga/qrcode.php">Unduh Kartu Pengambilan Daging Anda</a></li>
+                        <li><a href="keuangan/index.php">Lihat Transaksi Keuangan (Jika Diizinkan)</a></li>
+                    </ul>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<?php
+include '../includes/footer.php';
+?>

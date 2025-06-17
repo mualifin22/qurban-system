@@ -44,9 +44,12 @@ function sanitizeInput($data) {
     return $data;
 }
 
-// Fungsi untuk format mata uang Rupiah
 function formatRupiah($amount) {
-    return 'Rp ' . number_format($amount, 0, ',', '.');
+    // Tambahkan pengecekan jika $amount adalah NULL atau bukan numerik
+    if ($amount === null || !is_numeric($amount)) {
+        $amount = 0; // Ubah NULL atau non-numerik menjadi 0
+    }
+    return 'Rp ' . number_format((float)$amount, 0, ',', '.');
 }
 
 // Fungsi untuk mendapatkan data user yang sedang login

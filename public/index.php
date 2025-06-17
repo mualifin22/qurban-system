@@ -1,87 +1,172 @@
+<?php
+// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
+// ini_set('display_errors', 1);
+// ini_set('display_startup_errors', 1);
+// error_reporting(E_ALL);
+
+include '../includes/db.php';
+include '../includes/functions.php';
+
+// Jika user sudah login, redirect ke dashboard
+if (isLoggedIn()) {
+    header("Location: dashboard.php");
+    exit();
+}
+
+// Mulai session untuk menampilkan pesan error
+if (session_status() == PHP_SESSION_NONE) {
+    session_start();
+}
+
+$error_message = '';
+if (isset($_SESSION['error_message'])) {
+    $error_message = $_SESSION['error_message'];
+    unset($_SESSION['error_message']); // Hapus pesan error setelah ditampilkan
+}
+
+// Jika ada request POST dari form login
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $username = sanitizeInput($_POST['username'] ?? '');
+    $password = sanitizeInput($_POST['password'] ?? '');
+
+    // Query untuk mengambil user dari database
+    $stmt = $conn->prepare("SELECT id, username, password, role, nik_warga FROM users WHERE username = ?");
+    $stmt->bind_param("s", $username);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result->num_rows === 1) {
+        $user = $result->fetch_assoc();
+        // Verifikasi password
+        if (verifyPassword($password, $user['password'])) {
+            // Password benar, set session
+            $_SESSION['user_id'] = $user['id'];
+            $_SESSION['username'] = $user['username'];
+            $_SESSION['role'] = $user['role'];
+            $_SESSION['nik_warga'] = $user['nik_warga'];
+
+            // Redirect ke dashboard
+            header("Location: dashboard.php");
+            exit();
+        } else {
+            $error_message = "Username atau password salah.";
+        }
+    } else {
+        $error_message = "Username atau password salah.";
+    }
+    // Jika ada error, simpan ke session untuk ditampilkan saat redirect
+    $_SESSION['error_message'] = $error_message;
+    header("Location: index.php"); // Redirect kembali ke halaman ini untuk menampilkan error
+    exit();
+}
+?>
+
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login Sistem Qurban RT 001</title>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="Sistem Informasi Qurban RT 001">
+    <meta name="author" content="Your Name">
+
+    <title>Login - Sistem Qurban RT 001</title>
+
+    <link href="/sistem_qurban/public/vendor/fontawesome-free/css/all.min.css" rel="stylesheet" type="text/css">
+    <link href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet">
+
+    <link href="/sistem_qurban/public/css/sb-admin-2.min.css" rel="stylesheet">
+
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
+        html, body {
+            height: 100%; 
+        }
+        
+        body.bg-gradient-primary {
+            background-color: #4e73df;
+            background-image: linear-gradient(180deg, #4e73df 10%, #224abe 100%);
+            background-size: contain;
+
             display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
+            align-items: center;     
+            justify-content: center; 
         }
-        .login-container {
-            background-color: #fff;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            width: 300px;
-            text-align: center;
+
+        .bg-login-image-custom {
+            background: url('/sistem_qurban/public/assets/qurban_bg.jpg');
+            background-position: center;
+            background-size: contain;
         }
-        .login-container h2 {
-            margin-bottom: 20px;
-            color: #333;
-        }
-        .form-group {
-            margin-bottom: 15px;
-            text-align: left;
-        }
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            color: #555;
-        }
-        .form-group input[type="text"],
-        .form-group input[type="password"] {
-            width: calc(100% - 20px);
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        .btn-login {
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            width: 100%;
-            font-size: 16px;
-        }
-        .btn-login:hover {
-            background-color: #45a049;
-        }
-        .error-message {
-            color: red;
-            margin-top: 10px;
-        }
+
     </style>
-</head>
-<body>
-    <div class="login-container">
-        <h2>Login Sistem Qurban</h2>
-        <form action="auth.php" method="POST">
-            <div class="form-group">
-                <label for="username">Username:</label>
-                <input type="text" id="username" name="username" required>
+    </head>
+
+<body class="bg-gradient-primary">
+
+    <div class="container">
+
+        <div class="row justify-content-center">
+
+            <div class="col-xl-9 col-lg-10 col-md-11">
+
+                <div class="card o-hidden border-0 shadow-lg">
+                    <div class="card-body p-0">
+                        <div class="row">
+                            <div class="col-lg-6 d-none d-lg-block bg-login-image-custom"></div>
+                            <div class="col-lg-6">
+                                <div class="p-5">
+                                    <div class="text-center">
+                                        <h1 class="h4 text-gray-900 mb-4">Selamat Datang!</h1>
+                                        <p class="text-muted mb-4">Sistem Informasi Manajemen Qurban</p>
+                                    </div>
+
+                                    <form class="user" action="index.php" method="POST">
+                                        <?php if (!empty($error_message)): ?>
+                                            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                                <?php echo htmlspecialchars($error_message); ?>
+                                                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                                    <span aria-hidden="true">&times;</span>
+                                                </button>
+                                            </div>
+                                        <?php endif; ?>
+                                        <div class="form-group">
+                                            <input type="text" class="form-control form-control-user"
+                                                id="username" name="username"
+                                                placeholder="Masukkan Username..." required>
+                                        </div>
+                                        <div class="form-group">
+                                            <input type="password" class="form-control form-control-user"
+                                                id="password" name="password" placeholder="Password" required>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary btn-user btn-block">
+                                            Login
+                                        </button>
+                                        <hr>
+                                    </form>
+                                    
+                                    <div class="text-center">
+                                        <a class="small" href="#">Lupa Password? (Hubungi Admin)</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
-            <div class="form-group">
-                <label for="password">Password:</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-            <button type="submit" class="btn-login">Login</button>
-            <?php
-            session_start();
-            if (isset($_SESSION['error_message'])) {
-                echo '<p class="error-message">' . $_SESSION['error_message'] . '</p>';
-                unset($_SESSION['error_message']); // Hapus pesan error setelah ditampilkan
-            }
-            ?>
-        </form>
+
+        </div>
+
     </div>
+
+    <script src="/sistem_qurban/public/vendor/jquery/jquery.min.js"></script>
+    <script src="/sistem_qurban/public/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+
+    <script src="/sistem_qurban/public/vendor/jquery-easing/jquery.easing.min.js"></script>
+
+    <script src="/sistem_qurban/public/js/sb-admin-2.min.js"></script>
+
 </body>
+
 </html>

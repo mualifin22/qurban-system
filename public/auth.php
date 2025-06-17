@@ -42,8 +42,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Jika diakses langsung tanpa POST, redirect ke halaman login
     redirectToLogin();
 }
-// public/auth.php
-// ... kode sebelumnya ...
 
 if (isset($_GET['logout'])) {
     // Hapus semua variabel session
@@ -65,5 +63,4 @@ if (isset($_GET['logout'])) {
     header("Location: index.php");
     exit();
 }
-// ... kode selanjutnya ...
 ?>

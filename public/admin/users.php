@@ -1,12 +1,8 @@
 <?php
 // Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
-// =========================================================================
-// Bagian Pemrosesan Logika PHP (Harus di atas, sebelum output HTML dimulai)
-// =========================================================================
+// ini_set('display_errors', 1);
+// ini_set('display_startup_errors', 1);
+// error_reporting(E_ALL);
 
 include '../../includes/db.php';
 include '../../includes/functions.php';
@@ -37,71 +33,97 @@ if ($result->num_rows > 0) {
     }
 }
 
-// =========================================================================
-// Bagian Tampilan HTML (Dimulai setelah semua logika PHP selesai)
-// =========================================================================
-include '../../includes/header.php'; // Sertakan header setelah semua logika PHP selesai
+
+// Bagian Tampilan HTML
+include '../../includes/header.php';
 ?>
 
-<div class="container">
-    <h2>Manajemen User</h2>
-    <?php
-    if (isset($_SESSION['message'])) {
-        echo '<div class="message ' . $_SESSION['message_type'] . '">' . $_SESSION['message'] . '</div>';
-        unset($_SESSION['message']);
-        unset($_SESSION['message_type']);
-    }
-    ?>
-    <p>
-        <a href="add_user.php" class="btn btn-add">Tambah User Baru</a>
-    </p>
-
-    <table>
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Username</th>
-                <th>Role</th>
-                <th>NIK Warga</th>
-                <th>Nama Warga</th>
-                <th>Status Qurban</th>
-                <th>Panitia</th>
-                <th>Dibuat Pada</th>
-                <th>Aksi</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php
-            if (!empty($users_data)) {
-                foreach($users_data as $user) {
-                    echo "<tr>";
-                    echo "<td>" . htmlspecialchars($user['id']) . "</td>";
-                    echo "<td>" . htmlspecialchars($user['username']) . "</td>";
-                    echo "<td>" . htmlspecialchars(ucfirst($user['role'])) . "</td>";
-                    echo "<td>" . htmlspecialchars($user['warga_nik'] ?? 'N/A') . "</td>";
-                    echo "<td>" . htmlspecialchars($user['warga_nama'] ?? 'N/A') . "</td>";
-                    echo "<td>" . htmlspecialchars(ucfirst(str_replace('_', ' ', $user['status_qurban'] ?? 'N/A'))) . "</td>";
-                    echo "<td>" . (($user['status_panitia'] ?? false) ? 'Ya' : 'Tidak') . "</td>";
-                    echo "<td>" . htmlspecialchars($user['created_at']) . "</td>";
-                    echo '<td>';
-                    // Admin tidak bisa menghapus/mengedit akun admin utama (ID 1)
-                    if ($user['id'] == 1 && $user['username'] == 'admin') {
-                        echo '<span style="color: grey;">(Admin Utama)</span>';
-                    } else {
-                        echo '<a href="edit_user.php?id=' . htmlspecialchars($user['id']) . '" class="btn btn-edit">Edit</a> ';
-                        echo '<a href="delete_user.php?id=' . htmlspecialchars($user['id']) . '" class="btn btn-delete" onclick="return confirm(\'Apakah Anda yakin ingin menghapus user ini?\')">Hapus</a>';
-                    }
-                    echo '</td>';
-                    echo "</tr>";
-                }
-            } else {
-                echo "<tr><td colspan='9'>Tidak ada data user.</td></tr>";
-            }
-            ?>
-        </tbody>
-    </table>
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">Manajemen User</h1>
+    <a href="add_user.php" class="d-none d-sm-inline-block btn btn-sm btn-primary shadow-sm">
+        <i class="fas fa-plus fa-sm text-white-50"></i> Tambah User Baru
+    </a>
 </div>
 
 <?php
-include '../../includes/footer.php'; // Sertakan footer
+// Tampilkan pesan sukses/error/info (yang kita simpan di $_SESSION)
+if (isset($_SESSION['message'])) {
+    echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : ($_SESSION['message_type'] == 'info' ? 'info' : 'success')) . ' alert-dismissible fade show" role="alert">';
+    echo htmlspecialchars($_SESSION['message']);
+    echo '<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>';
+    echo '</div>';
+    unset($_SESSION['message']);
+    unset($_SESSION['message_type']);
+}
+?>
+
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Daftar User Sistem</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Role</th>
+                        <th>NIK Warga</th>
+                        <th>Nama Warga</th>
+                        <th>Status Qurban</th>
+                        <th>Panitia</th>
+                        <th>Dibuat Pada</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tfoot>
+                    <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Role</th>
+                        <th>NIK Warga</th>
+                        <th>Nama Warga</th>
+                        <th>Status Qurban</th>
+                        <th>Panitia</th>
+                        <th>Dibuat Pada</th>
+                        <th>Aksi</th>
+                    </tr>
+                </tfoot>
+                <tbody>
+                    <?php
+                    if (!empty($users_data)) {
+                        foreach($users_data as $user) {
+                            echo "<tr>";
+                            echo "<td>" . htmlspecialchars($user['id']) . "</td>";
+                            echo "<td>" . htmlspecialchars($user['username']) . "</td>";
+                            echo "<td>" . htmlspecialchars(ucfirst($user['role'])) . "</td>";
+                            echo "<td>" . htmlspecialchars($user['warga_nik'] ?? 'N/A') . "</td>";
+                            echo "<td>" . htmlspecialchars($user['warga_nama'] ?? 'N/A') . "</td>";
+                            echo "<td>" . htmlspecialchars(ucfirst(str_replace('_', ' ', $user['status_qurban'] ?? 'N/A'))) . "</td>";
+                            echo "<td>" . (($user['status_panitia'] ?? false) ? 'Ya' : 'Tidak') . "</td>";
+                            echo "<td>" . htmlspecialchars($user['created_at']) . "</td>";
+                            echo '<td>';
+                            // Admin tidak bisa menghapus/mengedit akun admin utama (ID 1)
+                            if ($user['id'] == 1 && $user['username'] == 'admin') {
+                                echo '<span class="text-info font-weight-bold">(Admin Utama)</span>';
+                            } else {
+                                echo '<a href="edit_user.php?id=' . htmlspecialchars($user['id']) . '" class="btn btn-warning btn-circle btn-sm" title="Edit User"><i class="fas fa-edit"></i></a> ';
+                                echo '<a href="delete_user.php?id=' . htmlspecialchars($user['id']) . '" class="btn btn-danger btn-circle btn-sm" onclick="return confirm(\'Apakah Anda yakin ingin menghapus user ini?\')" title="Hapus User"><i class="fas fa-trash"></i></a>';
+                            }
+                            echo '</td>';
+                            echo "</tr>";
+                        }
+                    } else {
+                        echo "<tr><td colspan='9' class='text-center'>Tidak ada data user.</td></tr>";
+                    }
+                    ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<?php
+include '../../includes/footer.php';
 ?>

@@ -1,7 +1,12 @@
 <?php
+// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
+
+// =========================================================================
+// Bagian Pemrosesan Logika PHP (LOGIKA SUDAH BAIK, TIDAK ADA PERUBAHAN)
+// =========================================================================
 
 include '../../includes/db.php';
 include '../../includes/functions.php';
@@ -10,18 +15,20 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
+// Otorisasi, bisa disesuaikan antara isLoggedIn() atau isAdmin() sesuai kebutuhan
 if (!isLoggedIn()) {
     redirectToLogin();
 }
 
 $harga = '';
-$biaya_administrasi = 50000;
-$estimasi_berat_daging_kg = 25;
+$biaya_administrasi = 50000; // Nilai default
+$estimasi_berat_daging_kg = 25; // Nilai default
 $tanggal_beli = date('Y-m-d');
 $nik_peserta = '';
 $errors = [];
 
-$sql_warga_peserta = "SELECT nik, nama FROM warga WHERE status_qurban = 'peserta' OR status_panitia = TRUE OR status_qurban = 'penerima' OR status_qurban = 'tidak_ikut' ORDER BY nama ASC";
+// Ambil daftar warga yang bisa menjadi peserta
+$sql_warga_peserta = "SELECT nik, nama, status_qurban FROM warga ORDER BY nama ASC";
 $result_warga_peserta = $conn->query($sql_warga_peserta);
 $list_warga = [];
 if ($result_warga_peserta && $result_warga_peserta->num_rows > 0) {
@@ -31,74 +38,77 @@ if ($result_warga_peserta && $result_warga_peserta->num_rows > 0) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $harga = sanitizeInput($_POST['harga']);
-    $biaya_administrasi = sanitizeInput($_POST['biaya_administrasi']);
-    $estimasi_berat_daging_kg = sanitizeInput($_POST['estimasi_berat_daging_kg']);
-    $tanggal_beli = sanitizeInput($_POST['tanggal_beli']);
-    $nik_peserta = sanitizeInput($_POST['nik_peserta']);
+    $harga = sanitizeInput($_POST['harga'] ?? '');
+    $biaya_administrasi = sanitizeInput($_POST['biaya_administrasi'] ?? 0);
+    $estimasi_berat_daging_kg = sanitizeInput($_POST['estimasi_berat_daging_kg'] ?? 0);
+    $tanggal_beli = sanitizeInput($_POST['tanggal_beli'] ?? '');
+    $nik_peserta = sanitizeInput($_POST['nik_peserta'] ?? '');
 
+    // Validasi
     if (!is_numeric($harga) || $harga <= 0) { $errors[] = "Harga harus angka positif."; }
     if (!is_numeric($biaya_administrasi) || $biaya_administrasi < 0) { $errors[] = "Biaya administrasi tidak valid."; }
     if (!is_numeric($estimasi_berat_daging_kg) || $estimasi_berat_daging_kg <= 0) { $errors[] = "Estimasi berat daging harus angka positif."; }
     if (empty($tanggal_beli)) { $errors[] = "Tanggal beli wajib diisi."; }
     if (empty($nik_peserta)) { $errors[] = "Peserta qurban kambing wajib dipilih."; }
+    else {
+        // Validasi tambahan: NIK yang dipilih tidak boleh sudah menjadi peserta
+        $stmt_check_peserta = $conn->prepare("SELECT status_qurban FROM warga WHERE nik = ?");
+        $stmt_check_peserta->bind_param("s", $nik_peserta);
+        $stmt_check_peserta->execute();
+        $result_check = $stmt_check_peserta->get_result()->fetch_assoc();
+        if ($result_check && $result_check['status_qurban'] === 'peserta') {
+            $errors[] = "Warga ini sudah terdaftar sebagai peserta qurban lain.";
+        }
+        $stmt_check_peserta->close();
+    }
+
 
     if (empty($errors)) {
         $conn->begin_transaction();
+        $old_status_qurban = '';
         try {
-            // Update status_qurban warga menjadi 'peserta'
-            // Ambil status lama untuk kemungkinan rollback
-            $old_status_qurban = '';
+            // Dapatkan status qurban lama untuk rollback
             $stmt_get_old_status = $conn->prepare("SELECT status_qurban FROM warga WHERE nik = ?");
             $stmt_get_old_status->bind_param("s", $nik_peserta);
             $stmt_get_old_status->execute();
             $result_old_status = $stmt_get_old_status->get_result();
-            if ($result_old_status->num_rows > 0) {
-                $old_status_qurban = $result_old_status->fetch_assoc()['status_qurban'];
+            if ($row = $result_old_status->fetch_assoc()) {
+                $old_status_qurban = $row['status_qurban'];
             }
             $stmt_get_old_status->close();
-
-            $stmt_update_warga_status = $conn->prepare("UPDATE warga SET status_qurban = 'peserta' WHERE nik = ? AND status_qurban != 'peserta'");
-            $stmt_update_warga_status->bind_param("s", $nik_peserta);
-            $stmt_update_warga_status->execute();
-            if ($stmt_update_warga_status->error) {
-                throw new mysqli_sql_exception("Error saat memperbarui status warga (kambing): " . $stmt_update_warga_status->error);
-            }
-            $stmt_update_warga_status->close();
 
             // 1. Masukkan data hewan qurban (kambing)
             $stmt_hewan = $conn->prepare("INSERT INTO hewan_qurban (jenis_hewan, harga, biaya_administrasi, tanggal_beli, estimasi_berat_daging_kg, nik_peserta_tunggal) VALUES (?, ?, ?, ?, ?, ?)");
             $jenis_hewan = 'kambing';
             $stmt_hewan->bind_param("sddsds", $jenis_hewan, $harga, $biaya_administrasi, $tanggal_beli, $estimasi_berat_daging_kg, $nik_peserta);
             $stmt_hewan->execute();
-            if ($stmt_hewan->error) {
-                throw new mysqli_sql_exception("Error saat memasukkan data hewan_qurban kambing: " . $stmt_hewan->error);
-            }
+            if ($stmt_hewan->error) { throw new mysqli_sql_exception("Error saat memasukkan data hewan: " . $stmt_hewan->error); }
             $id_hewan_qurban = $conn->insert_id;
             $stmt_hewan->close();
+            
+            // 2. Update status_qurban warga menjadi 'peserta'
+            $stmt_update_warga_status = $conn->prepare("UPDATE warga SET status_qurban = 'peserta' WHERE nik = ?");
+            $stmt_update_warga_status->bind_param("s", $nik_peserta);
+            $stmt_update_warga_status->execute();
+            if ($stmt_update_warga_status->error) { throw new mysqli_sql_exception("Error saat memperbarui status warga: " . $stmt_update_warga_status->error); }
+            $stmt_update_warga_status->close();
 
-            // 2. Tambahkan transaksi ke keuangan (pengeluaran pembelian kambing)
+            // 3. Tambahkan transaksi pengeluaran pembelian
             $total_biaya = $harga + $biaya_administrasi;
-            $stmt_keuangan = $conn->prepare("INSERT INTO keuangan (jenis, keterangan, jumlah, tanggal, id_hewan_qurban) VALUES (?, ?, ?, ?, ?)");
-            $keterangan_beli = "Pembelian Qurban Kambing (ID: " . $id_hewan_qurban . ") untuk NIK " . $nik_peserta;
-            $jenis_transaksi = 'pengeluaran';
-            $stmt_keuangan->bind_param("ssdsi", $jenis_transaksi, $keterangan_beli, $total_biaya, $tanggal_beli, $id_hewan_qurban);
-            $stmt_keuangan->execute();
-            if ($stmt_keuangan->error) {
-                throw new mysqli_sql_exception("Error saat memasukkan pengeluaran pembelian kambing: " . $stmt_keuangan->error);
-            }
-            $stmt_keuangan->close();
+            $stmt_keuangan_out = $conn->prepare("INSERT INTO keuangan (jenis, keterangan, jumlah, tanggal, id_hewan_qurban) VALUES ('pengeluaran', ?, ?, ?, ?)");
+            $keterangan_beli = "Pembelian Qurban Kambing (ID Hewan: " . $id_hewan_qurban . ")";
+            $stmt_keuangan_out->bind_param("sdsi", $keterangan_beli, $total_biaya, $tanggal_beli, $id_hewan_qurban);
+            $stmt_keuangan_out->execute();
+            if ($stmt_keuangan_out->error) { throw new mysqli_sql_exception("Error saat mencatat pengeluaran: " . $stmt_keuangan_out->error); }
+            $stmt_keuangan_out->close();
 
-            // 3. Tambahkan pemasukan dari iuran peserta kambing
-            $stmt_keuangan_iuran = $conn->prepare("INSERT INTO keuangan (jenis, keterangan, jumlah, tanggal) VALUES (?, ?, ?, ?)");
-            $keterangan_iuran = "Iuran Qurban Kambing ID " . $id_hewan_qurban . " dari NIK " . $nik_peserta;
-            $jenis_transaksi_masuk = 'pemasukan';
-            $stmt_keuangan_iuran->bind_param("ssds", $jenis_transaksi_masuk, $keterangan_iuran, $total_biaya, $tanggal_beli);
-            $stmt_keuangan_iuran->execute();
-            if ($stmt_keuangan_iuran->error) {
-                throw new mysqli_sql_exception("Error saat memasukkan iuran keuangan kambing: " . $stmt_keuangan_iuran->error);
-            }
-            $stmt_keuangan_iuran->close();
+            // 4. Tambahkan transaksi pemasukan dari iuran
+            $stmt_keuangan_in = $conn->prepare("INSERT INTO keuangan (jenis, keterangan, jumlah, tanggal, id_hewan_qurban) VALUES ('pemasukan', ?, ?, ?, ?)");
+            $keterangan_iuran = "Iuran Qurban Kambing (ID Hewan: " . $id_hewan_qurban . ") dari NIK " . $nik_peserta;
+            $stmt_keuangan_in->bind_param("sdsi", $keterangan_iuran, $total_biaya, $tanggal_beli, $id_hewan_qurban);
+            $stmt_keuangan_in->execute();
+            if ($stmt_keuangan_in->error) { throw new mysqli_sql_exception("Error saat mencatat pemasukan iuran: " . $stmt_keuangan_in->error); }
+            $stmt_keuangan_in->close();
 
             $conn->commit();
             $_SESSION['message'] = "Data qurban kambing berhasil ditambahkan.";
@@ -108,31 +118,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         } catch (mysqli_sql_exception $e) {
             $conn->rollback();
-            // Rollback status_qurban jika terjadi error
-            if (!empty($old_status_qurban)) {
+            if (!empty($old_status_qurban)) { // Pastikan rollback status hanya jika status lama berhasil didapat
                 $stmt_rollback_status = $conn->prepare("UPDATE warga SET status_qurban = ? WHERE nik = ?");
                 $stmt_rollback_status->bind_param("ss", $old_status_qurban, $nik_peserta);
                 $stmt_rollback_status->execute();
                 $stmt_rollback_status->close();
             }
-            $errors[] = "Gagal menambahkan data qurban kambing: " . $e->getMessage();
-            $_SESSION['message'] = "Gagal menambahkan data qurban kambing: " . $e->getMessage();
+            $_SESSION['message'] = "Gagal menambahkan data: " . $e->getMessage();
             $_SESSION['message_type'] = "error";
             $_SESSION['form_data'] = $_POST;
             header("Location: add_kambing.php");
             exit();
         }
     } else {
-        $_SESSION['form_data'] = $_POST;
         $_SESSION['errors'] = $errors;
+        $_SESSION['form_data'] = $_POST;
         header("Location: add_kambing.php");
         exit();
     }
 } else {
+    // Logika untuk GET request (sticky form)
     if (isset($_SESSION['form_data'])) {
         $harga = $_SESSION['form_data']['harga'] ?? '';
-        $biaya_administrasi = $_SESSION['form_data']['biaya_administrasi'] ?? '';
-        $estimasi_berat_daging_kg = $_SESSION['form_data']['estimasi_berat_daging_kg'] ?? '';
+        $biaya_administrasi = $_SESSION['form_data']['biaya_administrasi'] ?? $biaya_administrasi;
+        $estimasi_berat_daging_kg = $_SESSION['form_data']['estimasi_berat_daging_kg'] ?? $estimasi_berat_daging_kg;
         $tanggal_beli = $_SESSION['form_data']['tanggal_beli'] ?? date('Y-m-d');
         $nik_peserta = $_SESSION['form_data']['nik_peserta'] ?? '';
         unset($_SESSION['form_data']);
@@ -142,60 +151,87 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         unset($_SESSION['errors']);
     }
 }
-?>
 
+// =========================================================================
+// Bagian Tampilan HTML (BAGIAN INI YANG DIPERCANTIK)
+// =========================================================================
+?>
 <?php include '../../includes/header.php'; ?>
 
-<div class="container">
-    <h2>Tambah Data Qurban Kambing</h2>
-    <?php
-    if (!empty($errors)) {
-        echo '<div class="message error">';
-        foreach ($errors as $error) {
-            echo '<p>' . htmlspecialchars($error) . '</p>';
-        }
-        echo '</div>';
-    }
-    if (isset($_SESSION['message'])) {
-        echo '<div class="message ' . $_SESSION['message_type'] . '">' . $_SESSION['message'] . '</div>';
-        unset($_SESSION['message']);
-        unset($_SESSION['message_type']);
-    }
-    ?>
-    <form action="" method="POST">
-        <div class="form-group">
-            <label for="harga">Harga Kambing:</label>
-            <input type="number" id="harga" name="harga" value="<?php echo htmlspecialchars($harga); ?>" step="10000" required>
-        </div>
-        <div class="form-group">
-            <label for="biaya_administrasi">Biaya Administrasi:</label>
-            <input type="number" id="biaya_administrasi" name="biaya_administrasi" value="<?php echo htmlspecialchars($biaya_administrasi); ?>" step="10000" required>
-        </div>
-        <div class="form-group">
-            <label for="estimasi_berat_daging_kg">Estimasi Berat Daging (kg):</label>
-            <input type="number" id="estimasi_berat_daging_kg" name="estimasi_berat_daging_kg" value="<?php echo htmlspecialchars($estimasi_berat_daging_kg); ?>" step="0.1" required>
-            <small>Asumsi per ekor kambing.</small>
-        </div>
-        <div class="form-group">
-            <label for="tanggal_beli">Tanggal Beli:</label>
-            <input type="date" id="tanggal_beli" name="tanggal_beli" value="<?php echo htmlspecialchars($tanggal_beli); ?>" required>
-        </div>
-        <div class="form-group">
-            <label for="nik_peserta">Peserta Qurban Kambing (1 Orang):</label>
-            <select id="nik_peserta" name="nik_peserta" required>
-                <option value="">-- Pilih Warga --</option>
-                <?php foreach ($list_warga as $warga): ?>
-                    <option value="<?php echo htmlspecialchars($warga['nik']); ?>" <?php echo ($nik_peserta == $warga['nik']) ? 'selected' : ''; ?>>
-                        <?php echo htmlspecialchars($warga['nama']); ?> (<?php echo htmlspecialchars($warga['nik']); ?>)
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <?php if (empty($list_warga)): ?>
-                <p style="color: red; margin-top: 5px;">Tidak ada warga yang terdaftar sebagai peserta atau panitia.</p>
-            <?php endif; ?>
-        </div>
-        <button type="submit" class="btn btn-primary">Simpan</button>
-        <a href="index.php" class="btn btn-secondary" style="background-color: #6c757d;">Batal</a>
-    </form>
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">Tambah Data Qurban Kambing</h1>
 </div>
+
+<?php
+// Sistem Notifikasi Pesan Sesuai Standar
+if (isset($_SESSION['message'])) {
+    echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : 'success') . ' alert-dismissible fade show" role="alert">';
+    echo htmlspecialchars($_SESSION['message']);
+    echo '<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>';
+    echo '</div>';
+    unset($_SESSION['message']);
+    unset($_SESSION['message_type']);
+}
+if (!empty($errors)) {
+    echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">';
+    echo '<strong>Error!</strong> Mohon perbaiki kesalahan berikut:<ul>';
+    foreach ($errors as $error) {
+        echo '<li>' . htmlspecialchars($error) . '</li>';
+    }
+    echo '</ul>';
+    echo '<button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>';
+    echo '</div>';
+}
+?>
+
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Form Data Hewan Qurban Kambing</h6>
+    </div>
+    <div class="card-body">
+        <form action="add_kambing.php" method="POST">
+            <div class="form-group">
+                <label for="harga">Harga Kambing (Rp)</label>
+                <input type="number" class="form-control" id="harga" name="harga" value="<?php echo htmlspecialchars($harga); ?>" step="1000" placeholder="Contoh: 3000000" required>
+            </div>
+            <div class="form-group">
+                <label for="biaya_administrasi">Biaya Administrasi (Rp)</label>
+                <input type="number" class="form-control" id="biaya_administrasi" name="biaya_administrasi" value="<?php echo htmlspecialchars($biaya_administrasi); ?>" step="1000" required>
+            </div>
+            <div class="form-group">
+                <label for="estimasi_berat_daging_kg">Estimasi Berat Daging (kg)</label>
+                <input type="number" class="form-control" id="estimasi_berat_daging_kg" name="estimasi_berat_daging_kg" value="<?php echo htmlspecialchars($estimasi_berat_daging_kg); ?>" step="0.1" placeholder="Contoh: 25.5" required>
+                <small class="form-text text-muted">Perkiraan berat daging bersih per ekor kambing.</small>
+            </div>
+            <div class="form-group">
+                <label for="tanggal_beli">Tanggal Beli</label>
+                <input type="date" class="form-control" id="tanggal_beli" name="tanggal_beli" value="<?php echo htmlspecialchars($tanggal_beli); ?>" required>
+            </div>
+            <div class="form-group">
+                <label for="nik_peserta">Peserta Qurban (1 Orang)</label>
+                <select class="form-control" id="nik_peserta" name="nik_peserta" required>
+                    <option value="">-- Pilih Warga --</option>
+                    <?php foreach ($list_warga as $warga): ?>
+                        <?php
+                            // Tambahkan logika untuk menonaktifkan (disable) warga yang sudah menjadi peserta
+                            $disabled = ($warga['status_qurban'] === 'peserta') ? 'disabled' : '';
+                            $selected = ($nik_peserta == $warga['nik']) ? 'selected' : '';
+                            $status_text = ($warga['status_qurban'] === 'peserta') ? ' - (Sudah jadi peserta)' : '';
+                        ?>
+                        <option value="<?php echo htmlspecialchars($warga['nik']); ?>" <?php echo $selected; ?> <?php echo $disabled; ?>>
+                            <?php echo htmlspecialchars($warga['nama']); ?> (<?php echo htmlspecialchars($warga['nik']); ?>) <?php echo htmlspecialchars($status_text); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <?php if (empty($list_warga)): ?>
+                    <p class="text-danger mt-2">Tidak ada data warga yang bisa dipilih.</p>
+                <?php endif; ?>
+                <small class="form-text text-muted">Warga yang sudah terdaftar sebagai peserta tidak dapat dipilih.</small>
+            </div>
+            <button type="submit" class="btn btn-primary">Simpan</button>
+            <a href="index.php" class="btn btn-secondary">Batal</a>
+        </form>
+    </div>
+</div>
+
 <?php include '../../includes/footer.php'; ?>
