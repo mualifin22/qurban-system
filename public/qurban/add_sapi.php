@@ -294,4 +294,4 @@ JS;
 
 include '../../includes/footer.php';
 echo $script;
-?>22
+?>
