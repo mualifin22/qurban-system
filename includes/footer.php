@@ -1,5 +1,4 @@
 <?php
-// includes/footer.php
 ?>
                 </div> </div> <footer class="sticky-footer bg-white">
                 <div class="container my-auto">

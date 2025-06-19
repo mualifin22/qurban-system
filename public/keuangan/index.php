@@ -1,12 +1,7 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-
-// =========================================================================
-// Bagian Pemrosesan Logika PHP (Harus di atas, sebelum output HTML dimulai)
-// =========================================================================
 
 include '../../includes/db.php';
 include '../../includes/functions.php';
@@ -15,7 +10,6 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Hanya Admin atau Panitia yang bisa mengakses halaman ini
 if (!isAdmin() && !isPanitia()) {
     $_SESSION['message'] = "Anda tidak memiliki akses ke halaman ini.";
     $_SESSION['message_type'] = "error";
@@ -23,7 +17,6 @@ if (!isAdmin() && !isPanitia()) {
     exit();
 }
 
-// Ambil data keuangan
 $sql = "SELECT id, jenis, keterangan, jumlah, tanggal, id_hewan_qurban FROM keuangan ORDER BY tanggal DESC, id DESC";
 $result = $conn->query($sql);
 
@@ -44,9 +37,6 @@ if ($result->num_rows > 0) {
 }
 $saldo_akhir = $total_pemasukan - $total_pengeluaran;
 
-// =========================================================================
-// Bagian Tampilan HTML (Dimulai setelah semua logika PHP selesai)
-// =========================================================================
 include '../../includes/header.php'; // Sertakan header SB Admin 2
 ?>
 
@@ -58,7 +48,6 @@ include '../../includes/header.php'; // Sertakan header SB Admin 2
 </div>
 
 <?php
-// Tampilkan pesan sukses/error/info (yang kita simpan di $_SESSION)
 if (isset($_SESSION['message'])) {
     echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : ($_SESSION['message_type'] == 'info' ? 'info' : 'success')) . ' alert-dismissible fade show" role="alert">';
     echo htmlspecialchars($_SESSION['message']);
@@ -156,7 +145,7 @@ if (isset($_SESSION['message'])) {
                     if (!empty($data_keuangan)) {
                         foreach($data_keuangan as $row) {
                             $is_linked_to_qurban = !empty($row['id_hewan_qurban']);
-                            $row_class = $is_linked_to_qurban ? 'table-secondary' : ''; // Beri warna abu jika terkait Qurban
+                            $row_class = $is_linked_to_qurban ? 'table-secondary' : ''; 
                             
                             echo "<tr class='".htmlspecialchars($row_class)."'>";
                             echo "<td>" . htmlspecialchars($row['id']) . "</td>";
@@ -172,7 +161,7 @@ if (isset($_SESSION['message'])) {
                             }
                             echo "</td>";
                             echo '<td>';
-                            if (!$is_linked_to_qurban) { // Hanya izinkan edit/hapus jika tidak terkait hewan qurban
+                            if (!$is_linked_to_qurban) { 
                                 echo '<a href="edit.php?id=' . htmlspecialchars($row['id']) . '" class="btn btn-warning btn-circle btn-sm" title="Edit Transaksi"><i class="fas fa-edit"></i></a> ';
                                 echo '<a href="delete.php?id=' . htmlspecialchars($row['id']) . '" class="btn btn-danger btn-circle btn-sm" onclick="return confirm(\'Apakah Anda yakin ingin menghapus transaksi ini?\')" title="Hapus Transaksi"><i class="fas fa-trash"></i></a>';
                             } else {

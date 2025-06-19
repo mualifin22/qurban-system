@@ -1,12 +1,8 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-// =========================================================================
-// Bagian Pemrosesan Logika PHP (LOGIKA SUDAH SANGAT BAIK, TIDAK DIUBAH)
-// =========================================================================
 include '../../includes/db.php';
 include '../../includes/functions.php';
 
@@ -25,7 +21,6 @@ $tanggal_beli = date('Y-m-d');
 $errors = [];
 $selected_peserta = [];
 
-// Ambil daftar warga yang bisa menjadi peserta (logika ini dipertahankan)
 $sql_warga_peserta = "SELECT nik, nama, status_qurban FROM warga ORDER BY nama ASC";
 $result_warga_peserta = $conn->query($sql_warga_peserta);
 $list_warga = [];
@@ -42,7 +37,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tanggal_beli = sanitizeInput($_POST['tanggal_beli'] ?? '');
     $selected_peserta = isset($_POST['peserta']) && is_array($_POST['peserta']) ? $_POST['peserta'] : [];
 
-    // Validasi
     if (!is_numeric($harga) || $harga <= 0) { $errors[] = "Harga harus angka positif."; }
     if (!is_numeric($biaya_administrasi) || $biaya_administrasi < 0) { $errors[] = "Biaya administrasi tidak valid."; }
     if (!is_numeric($estimasi_berat_daging_kg) || $estimasi_berat_daging_kg <= 0) { $errors[] = "Estimasi berat daging harus angka positif."; }
@@ -68,7 +62,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $conn->begin_transaction();
         $old_statuses = [];
         try {
-            // Dapatkan status qurban lama untuk semua peserta
             $stmt_get_old_status = $conn->prepare("SELECT status_qurban FROM warga WHERE nik = ?");
             foreach ($selected_peserta as $nik_p) {
                 $stmt_get_old_status->bind_param("s", $nik_p);
@@ -79,7 +72,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $stmt_get_old_status->close();
             
-            // 1. Masukkan data hewan qurban (sapi)
             $stmt_hewan = $conn->prepare("INSERT INTO hewan_qurban (jenis_hewan, harga, biaya_administrasi, tanggal_beli, estimasi_berat_daging_kg) VALUES ('sapi', ?, ?, ?, ?)");
             $stmt_hewan->bind_param("ddsd", $harga, $biaya_administrasi, $tanggal_beli, $estimasi_berat_daging_kg);
             $stmt_hewan->execute();
@@ -87,24 +79,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id_hewan_qurban = $conn->insert_id;
             $stmt_hewan->close();
 
-            // 2. Update status warga, kaitkan peserta, dan catat iuran dalam satu loop
             $iuran_per_orang = ($harga + $biaya_administrasi) / 7;
             $stmt_update_warga = $conn->prepare("UPDATE warga SET status_qurban = 'peserta' WHERE nik = ?");
             $stmt_peserta_sapi = $conn->prepare("INSERT INTO peserta_sapi (id_hewan_qurban, nik_warga, jumlah_iuran) VALUES (?, ?, ?)");
             $stmt_keuangan_in = $conn->prepare("INSERT INTO keuangan (jenis, keterangan, jumlah, tanggal, id_hewan_qurban) VALUES ('pemasukan', ?, ?, ?, ?)");
 
             foreach ($selected_peserta as $nik_p) {
-                // Update status warga
                 $stmt_update_warga->bind_param("s", $nik_p);
                 $stmt_update_warga->execute();
                 if ($stmt_update_warga->error) { throw new mysqli_sql_exception("Error update status NIK " . $nik_p . ": " . $stmt_update_warga->error); }
 
-                // Kaitkan ke tabel peserta_sapi
                 $stmt_peserta_sapi->bind_param("isd", $id_hewan_qurban, $nik_p, $iuran_per_orang);
                 $stmt_peserta_sapi->execute();
                 if ($stmt_peserta_sapi->error) { throw new mysqli_sql_exception("Error insert peserta NIK " . $nik_p . ": " . $stmt_peserta_sapi->error); }
 
-                // Catat iuran ke keuangan
                 $keterangan_iuran = "Iuran Sapi (ID Hewan: " . $id_hewan_qurban . ") dari NIK " . $nik_p;
                 $stmt_keuangan_in->bind_param("sdsi", $keterangan_iuran, $iuran_per_orang, $tanggal_beli, $id_hewan_qurban);
                 $stmt_keuangan_in->execute();
@@ -114,7 +102,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt_peserta_sapi->close();
             $stmt_keuangan_in->close();
 
-            // 3. Tambahkan satu transaksi pengeluaran besar
             $total_biaya_sapi = $harga + $biaya_administrasi;
             $keterangan_beli_sapi = "Pembelian Qurban Sapi (ID Hewan: " . $id_hewan_qurban . ")";
             $stmt_keuangan_out = $conn->prepare("INSERT INTO keuangan (jenis, keterangan, jumlah, tanggal, id_hewan_qurban) VALUES ('pengeluaran', ?, ?, ?, ?)");
@@ -152,7 +139,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 } else {
-    // Logika untuk GET request (sticky form)
     if (isset($_SESSION['form_data'])) {
         $harga = $_SESSION['form_data']['harga'] ?? '';
         $biaya_administrasi = $_SESSION['form_data']['biaya_administrasi'] ?? $biaya_administrasi;
@@ -167,9 +153,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// =========================================================================
-// Bagian Tampilan HTML (BAGIAN INI YANG DIPERCANTIK + UX IMPROVEMENT)
-// =========================================================================
 ?>
 <?php include '../../includes/header.php'; ?>
 
@@ -178,7 +161,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <?php
-// Sistem Notifikasi Pesan Sesuai Standar
 if (isset($_SESSION['message'])) {
     echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : 'success') . ' alert-dismissible fade show" role="alert">';
     echo htmlspecialchars($_SESSION['message']);
@@ -230,7 +212,6 @@ if (!empty($errors)) {
                     <?php if (!empty($list_warga)): ?>
                         <?php foreach ($list_warga as $warga): ?>
                             <?php
-                                // Logika untuk menonaktifkan warga yang sudah menjadi peserta
                                 $isDisabled = ($warga['status_qurban'] === 'peserta');
                                 $isChecked = in_array($warga['nik'], $selected_peserta);
                                 $statusText = $isDisabled ? ' - (Sudah jadi peserta)' : '';
@@ -258,7 +239,6 @@ if (!empty($errors)) {
 </div>
 
 <?php 
-// Tambahkan script di akhir sebelum footer
 $script = <<<JS
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -271,7 +251,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const checkedCount = document.querySelectorAll('input[name="peserta[]"]:checked').length;
         counterElement.textContent = checkedCount;
         
-        // Update warna counter untuk feedback visual
         if (checkedCount === limit) {
             counterElement.style.color = 'green';
             counterElement.style.fontWeight = 'bold';
@@ -280,7 +259,6 @@ document.addEventListener('DOMContentLoaded', function() {
             counterElement.style.fontWeight = 'bold';
         }
 
-        // UX Tambahan: nonaktifkan checkbox lain jika sudah mencapai batas
         if (checkedCount >= limit) {
             checkboxes.forEach(checkbox => {
                 if (!checkbox.checked) {
@@ -288,7 +266,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         } else {
-            // Aktifkan kembali checkbox yang tidak disabled karena status qurban
             checkboxes.forEach(checkbox => {
                 const isStatusPeserta = checkbox.nextElementSibling.querySelector('.text-danger').textContent.includes('Sudah jadi peserta');
                 if (!isStatusPeserta) {
@@ -298,20 +275,17 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Tambahkan event listener ke setiap checkbox
     checkboxes.forEach(checkbox => {
         checkbox.addEventListener('change', updateCounter);
     });
 
-    // Panggil sekali saat halaman dimuat untuk inisialisasi
     updateCounter();
 
-    // Validasi frontend sebelum submit
     form.addEventListener('submit', function(event) {
         const checkedCount = document.querySelectorAll('input[name="peserta[]"]:checked').length;
         if (checkedCount !== limit) {
             alert('Harap pilih tepat 7 peserta untuk qurban sapi.');
-            event.preventDefault(); // Mencegah form untuk disubmit
+            event.preventDefault();
         }
     });
 });
@@ -319,6 +293,5 @@ document.addEventListener('DOMContentLoaded', function() {
 JS;
 
 include '../../includes/footer.php';
-// Cetak variabel script di sini
 echo $script;
-?>
+?>22

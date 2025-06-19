@@ -1,21 +1,17 @@
 <?php
-// includes/header.php
-// Pastikan session sudah dimulai sebelum memanggil header di halaman lain
 if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-include_once __DIR__ . '/db.php'; // Menggunakan __DIR__ untuk path yang absolut
+include_once __DIR__ . '/db.php'; 
 include_once __DIR__ . '/functions.php';
 
-// Cek apakah user sudah login, jika belum redirect ke halaman login
 if (!isLoggedIn()) {
     redirectToLogin();
 }
 
-// Assign session variables with null coalescing operator for safety
-$currentUsername = $_SESSION['username'] ?? 'Guest'; // Default ke 'Guest' jika tidak diatur
-$currentRole = $_SESSION['role'] ?? 'warga';       // Default ke 'warga' jika tidak diatur
+$currentUsername = $_SESSION['username'] ?? 'Guest'; 
+$currentRole = $_SESSION['role'] ?? 'warga';       
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -37,7 +33,6 @@ $currentRole = $_SESSION['role'] ?? 'warga';       // Default ke 'warga' jika ti
     <link href="/sistem_qurban/public/vendor/datatables/dataTables.bootstrap4.min.css" rel="stylesheet">
 
     <style>
-        /* Override beberapa gaya SB Admin 2 jika diperlukan */
         .sidebar-brand-text {
             white-space: normal;
             /* Allow brand text to wrap */

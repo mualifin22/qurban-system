@@ -1,6 +1,4 @@
 <?php
-// includes/functions.php
-
 function hashPassword($password) {
     return password_hash($password, PASSWORD_DEFAULT);
 }
@@ -9,14 +7,12 @@ function verifyPassword($password, $hashedPassword) {
     return password_verify($password, $hashedPassword);
 }
 
-// Fungsi-fungsi berikut TIDAK lagi memanggil session_start()
-// Karena kita berasumsi session sudah dimulai di header.php atau auth.php
 function isLoggedIn() {
     return isset($_SESSION['user_id']);
 }
 
 function redirectToLogin() {
-    header("Location: /sistem_qurban/public/index.php"); // Sesuaikan path jika perlu
+    header("Location: /sistem_qurban/public/index.php"); 
     exit();
 }
 
@@ -36,7 +32,6 @@ function isWarga() {
     return isset($_SESSION['role']) && $_SESSION['role'] === 'warga';
 }
 
-// Fungsi untuk sanitasi input
 function sanitizeInput($data) {
     $data = trim($data);
     $data = stripslashes($data);
@@ -45,16 +40,14 @@ function sanitizeInput($data) {
 }
 
 function formatRupiah($amount) {
-    // Tambahkan pengecekan jika $amount adalah NULL atau bukan numerik
     if ($amount === null || !is_numeric($amount)) {
         $amount = 0; // Ubah NULL atau non-numerik menjadi 0
     }
     return 'Rp ' . number_format((float)$amount, 0, ',', '.');
 }
 
-// Fungsi untuk mendapatkan data user yang sedang login
+
 function getCurrentUser($conn) {
-    // Session harus sudah aktif sebelum memanggil fungsi ini
     if (isset($_SESSION['user_id'])) {
         $user_id = $_SESSION['user_id'];
         $stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");

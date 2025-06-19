@@ -1,5 +1,4 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
@@ -11,7 +10,6 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Hanya Admin yang bisa mengakses halaman ini
 if (!isAdmin()) {
     $_SESSION['message'] = "Anda tidak memiliki akses ke halaman ini.";
     $_SESSION['message_type'] = "error";
@@ -25,7 +23,6 @@ $role = '';
 $nik_warga = '';
 $errors = [];
 
-// Ambil daftar warga untuk dropdown NIK
 $sql_warga = "SELECT nik, nama, status_qurban, status_panitia FROM warga ORDER BY nama ASC";
 $result_warga = $conn->query($sql_warga);
 $list_warga = [];
@@ -41,12 +38,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $role = sanitizeInput($_POST['role'] ?? '');
     $nik_warga = sanitizeInput($_POST['nik_warga'] ?? '');
 
-    // Validasi
     if (empty($username)) { $errors[] = "Username wajib diisi."; }
     if (empty($password)) { $errors[] = "Password wajib diisi."; }
     if (empty($role) || !in_array($role, ['warga', 'panitia', 'admin'])) { $errors[] = "Role tidak valid."; }
 
-    // Cek duplikasi username
     $stmt_check_username = $conn->prepare("SELECT id FROM users WHERE username = ?");
     $stmt_check_username->bind_param("s", $username);
     $stmt_check_username->execute();
@@ -56,7 +51,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     $stmt_check_username->close();
 
-    // Validasi NIK warga jika dipilih
     if (!empty($nik_warga)) {
         $stmt_check_nik = $conn->prepare("SELECT COUNT(*) FROM warga WHERE nik = ?");
         $stmt_check_nik->bind_param("s", $nik_warga);
@@ -66,7 +60,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $stmt_check_nik->close();
 
-        // Cek apakah NIK sudah punya akun user lain
         $stmt_check_nik_in_users = $conn->prepare("SELECT id FROM users WHERE nik_warga = ?");
         $stmt_check_nik_in_users->bind_param("s", $nik_warga);
         $stmt_check_nik_in_users->execute();
@@ -92,7 +85,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $stmt_insert_user->close();
 
-            // Jika user adalah panitia, update status_panitia di tabel warga
             if ($role === 'panitia' && !empty($nik_warga)) {
                 $stmt_update_warga_panitia = $conn->prepare("UPDATE warga SET status_panitia = 1 WHERE nik = ?");
                 $stmt_update_warga_panitia->bind_param("s", $nik_warga);
@@ -125,7 +117,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 } else {
-    // Jika bukan POST, ambil data form dari session jika ada
     if (isset($_SESSION['form_data'])) {
         $username = $_SESSION['form_data']['username'] ?? '';
         $role = $_SESSION['form_data']['role'] ?? '';
@@ -146,7 +137,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <?php
-// Tampilkan pesan sukses/error/info (yang kita simpan di $_SESSION)
 if (isset($_SESSION['message'])) {
     echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : ($_SESSION['message_type'] == 'info' ? 'info' : 'success')) . ' alert-dismissible fade show" role="alert">';
     echo htmlspecialchars($_SESSION['message']);
@@ -155,7 +145,6 @@ if (isset($_SESSION['message'])) {
     unset($_SESSION['message']);
     unset($_SESSION['message_type']);
 }
-// Tampilkan pesan error validasi (dari $errors array)
 if (!empty($errors)) {
     echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">';
     echo '<strong>Error!</strong> Mohon perbaiki kesalahan berikut:<ul>';

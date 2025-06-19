@@ -1,12 +1,7 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-
-// =========================================================================
-// Bagian Pemrosesan Logika PHP (SAMA SEPERTI SEBELUMNYA, TIDAK DIUBAH)
-// =========================================================================
 
 include '../../includes/db.php';
 include '../../includes/functions.php';
@@ -15,7 +10,6 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Hanya Admin yang bisa mengakses halaman ini
 if (!isAdmin()) {
     $_SESSION['message'] = "Anda tidak memiliki akses ke halaman ini.";
     $_SESSION['message_type'] = "error";
@@ -23,21 +17,20 @@ if (!isAdmin()) {
     exit();
 }
 
-$id_user = ''; // ID user yang akan diedit (dari GET atau POST)
+$id_user = ''; 
 $username = '';
 $role = '';
 $nik_warga = '';
-$errors = []; // Untuk menampilkan error validasi
+$errors = []; 
 
-// Ambil ID user dari URL (GET) jika ini request awal
+
 if (isset($_GET['id'])) {
     $id_user = sanitizeInput($_GET['id']);
 }
-// Jika ini adalah POST request (form disubmit), ambil ID dari hidden field
 elseif (isset($_POST['id'])) {
     $id_user = sanitizeInput($_POST['id']);
 }
-// Jika tidak ada ID sama sekali, redirect
+
 else {
     $_SESSION['message'] = "ID user tidak ditemukan.";
     $_SESSION['message_type'] = "error";
@@ -45,9 +38,7 @@ else {
     exit();
 }
 
-// Pencegahan: Admin tidak bisa mengedit akun admin utama (ID 1) atau mengubah role/username-nya
-// Kecuali jika admin yang sedang login adalah admin utama itu sendiri
-$is_main_admin_user = ($id_user == 1); // ID 1 adalah user admin utama
+$is_main_admin_user = ($id_user == 1); 
 $can_change_role_username = !$is_main_admin_user || ($_SESSION['user_id'] == 1 && $is_main_admin_user);
 
 if ($is_main_admin_user && $_SESSION['user_id'] != $id_user) {
@@ -58,21 +49,18 @@ if ($is_main_admin_user && $_SESSION['user_id'] != $id_user) {
 }
 
 
-// Proses form jika ada data yang dikirim (POST request)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Ambil data dari POST
     $id_user = sanitizeInput($_POST['id'] ?? '');
     $username = sanitizeInput($_POST['username'] ?? '');
-    $password = $_POST['password'] ?? ''; // Password tidak disanitasi HTML
-    $role = sanitizeInput($_POST['role'] ?? ''); // Role yang dikirim dari form
+    $password = $_POST['password'] ?? ''; 
+    $role = sanitizeInput($_POST['role'] ?? ''); 
     $nik_warga = sanitizeInput($_POST['nik_warga'] ?? '');
 
-    // Validasi
     if (empty($id_user) || !is_numeric($id_user)) { $errors[] = "ID user tidak valid."; }
     if (empty($username)) { $errors[] = "Username wajib diisi."; }
     if (empty($role) || !in_array($role, ['warga', 'panitia', 'admin'])) { $errors[] = "Role tidak valid."; }
 
-    // Cek duplikasi username (kecuali untuk user yang sedang diedit)
     $stmt_check_username = $conn->prepare("SELECT id FROM users WHERE username = ? AND id != ?");
     $stmt_check_username->bind_param("si", $username, $id_user);
     $stmt_check_username->execute();
@@ -82,7 +70,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     $stmt_check_username->close();
 
-    // Validasi NIK warga jika diisi/diubah
     if (!empty($nik_warga)) {
         $stmt_check_nik = $conn->prepare("SELECT COUNT(*) FROM warga WHERE nik = ?");
         $stmt_check_nik->bind_param("s", $nik_warga);
@@ -92,7 +79,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $stmt_check_nik->close();
 
-        // Cek apakah NIK sudah punya akun user lain (kecuali user yang sedang diedit)
         $stmt_check_nik_in_users = $conn->prepare("SELECT id FROM users WHERE nik_warga = ? AND id != ?");
         $stmt_check_nik_in_users->bind_param("si", $nik_warga, $id_user);
         $stmt_check_nik_in_users->execute();
@@ -103,12 +89,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt_check_nik_in_users->close();
     }
 
-    // Jika admin utama mengedit dirinya sendiri, dia tidak bisa mengubah role ke non-admin
     if ($is_main_admin_user && $_SESSION['user_id'] == $id_user && $role !== 'admin') {
          $errors[] = "Admin utama tidak dapat mengubah role-nya sendiri.";
     }
 
-    // Jika ada error validasi, simpan data POST ke session dan tampilkan di form
     if (!empty($errors)) {
         $_SESSION['errors'] = $errors;
         $_SESSION['form_data'] = $_POST;
@@ -116,11 +100,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 
-    // --- Proses Update (jika validasi berhasil) ---
     $conn->begin_transaction();
 
     try {
-        // Ambil data user lama untuk rollback
         $stmt_get_old_user = $conn->prepare("SELECT username, role, nik_warga FROM users WHERE id = ?");
         $stmt_get_old_user->bind_param("i", $id_user);
         $stmt_get_old_user->execute();
@@ -128,9 +110,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt_get_old_user->close();
         $old_nik_warga = $old_user_data['nik_warga'];
 
-        // 1. Update data user di tabel `users`
         $update_query = "UPDATE users SET username = ?, role = ?, nik_warga = ? ";
-        if (!empty($password)) { // Jika password diisi, update password
+        if (!empty($password)) { 
             $hashed_password = hashPassword($password);
             $update_query .= ", password = ? ";
         }
@@ -150,9 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $stmt_update_user->close();
 
-        // 2. Update status_panitia di tabel warga (Logika kompleks ini dipertahankan)
         if ($old_nik_warga !== $nik_warga || $old_user_data['role'] !== $role) {
-            // Reset status panitia untuk NIK lama jika sudah tidak jadi panitia
             if (!empty($old_nik_warga)) {
                  $stmt_check_other = $conn->prepare("SELECT COUNT(*) FROM users WHERE nik_warga = ? AND role = 'panitia'");
                  $stmt_check_other->bind_param("s", $old_nik_warga);
@@ -165,7 +144,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  }
                  $stmt_check_other->close();
             }
-            // Set status panitia untuk NIK baru jika role adalah panitia
             if (!empty($nik_warga) && $role === 'panitia') {
                  $stmt_set = $conn->prepare("UPDATE warga SET status_panitia = 1 WHERE nik = ?");
                  $stmt_set->bind_param("s", $nik_warga);
@@ -190,14 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-
-// =========================================================================
-// Bagian Pengambilan Data untuk Tampilan Form (SAMA SEPERTI SEBELUMNYA)
-// =========================================================================
-
-// Jika ini GET request atau POST request dengan error, ambil data dari DB atau session
 if (!isset($_POST['id']) || !empty($errors)) {
-    // Ambil data user dari database berdasarkan ID
     $stmt_get_data = $conn->prepare("SELECT id, username, role, nik_warga FROM users WHERE id = ?");
     $stmt_get_data->bind_param("i", $id_user);
     $stmt_get_data->execute();
@@ -217,21 +188,18 @@ if (!isset($_POST['id']) || !empty($errors)) {
     $stmt_get_data->close();
 }
 
-// Jika ada data form dari session (setelah redirect karena error validasi), gunakan data itu
 if (isset($_SESSION['form_data'])) {
     $username = $_SESSION['form_data']['username'] ?? $username;
     $role = $_SESSION['form_data']['role'] ?? $role;
     $nik_warga = $_SESSION['form_data']['nik_warga'] ?? $nik_warga;
     unset($_SESSION['form_data']);
 }
-// Ambil pesan error dari session jika ada
 if (isset($_SESSION['errors'])) {
     $errors = array_merge($errors, $_SESSION['errors']);
     unset($_SESSION['errors']);
 }
 
 
-// Ambil daftar warga untuk dropdown NIK
 $sql_warga = "SELECT nik, nama, status_qurban, status_panitia FROM warga ORDER BY nama ASC";
 $result_warga = $conn->query($sql_warga);
 $list_warga = [];
@@ -241,10 +209,7 @@ if ($result_warga && $result_warga->num_rows > 0) {
     }
 }
 
-// =========================================================================
-// Bagian Tampilan HTML (BAGIAN INI YANG DIPERBARUI)
-// =========================================================================
-include '../../includes/header.php'; // Sertakan header setelah semua logika PHP selesai
+include '../../includes/header.php'; 
 ?>
 
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
@@ -252,8 +217,6 @@ include '../../includes/header.php'; // Sertakan header setelah semua logika PHP
 </div>
 
 <?php
-// Sistem Notifikasi Pesan Sesuai Referensi
-// Tampilkan pesan sukses/error/info (yang kita simpan di $_SESSION)
 if (isset($_SESSION['message'])) {
     echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : ($_SESSION['message_type'] == 'info' ? 'info' : 'success')) . ' alert-dismissible fade show" role="alert">';
     echo htmlspecialchars($_SESSION['message']);
@@ -262,7 +225,7 @@ if (isset($_SESSION['message'])) {
     unset($_SESSION['message']);
     unset($_SESSION['message_type']);
 }
-// Tampilkan pesan error validasi (dari $errors array)
+
 if (!empty($errors)) {
     echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">';
     echo '<strong>Error!</strong> Mohon perbaiki kesalahan berikut:<ul>';

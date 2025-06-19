@@ -1,12 +1,7 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-
-// =========================================================================
-// Bagian Pemrosesan Logika PHP (Harus di atas, sebelum output HTML dimulai)
-// =========================================================================
 
 include '../../includes/db.php';
 include '../../includes/functions.php';
@@ -15,7 +10,6 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Hanya Admin atau Panitia yang bisa mengakses halaman ini
 if (!isAdmin() && !isPanitia()) {
     $_SESSION['message'] = "Anda tidak memiliki akses ke halaman ini.";
     $_SESSION['message_type'] = "error";
@@ -23,64 +17,53 @@ if (!isAdmin() && !isPanitia()) {
     exit();
 }
 
-$id_perlengkapan = ''; // ID perlengkapan yang akan diedit (dari GET atau POST)
+$id_perlengkapan = ''; 
 $nama_barang = '';
 $jumlah = '';
 $harga_satuan = '';
 $tanggal_beli = '';
 $errors = [];
 
-// Ambil ID perlengkapan dari URL (GET) jika ini request awal
 if (isset($_GET['id'])) {
     $id_perlengkapan = sanitizeInput($_GET['id']);
-}
-// Jika ini adalah POST request (form disubmit), ambil ID dari hidden field
-elseif (isset($_POST['id'])) {
+} elseif (isset($_POST['id'])) {
     $id_perlengkapan = sanitizeInput($_POST['id']);
-}
-// Jika tidak ada ID sama sekali, redirect
-else {
+} else {
     $_SESSION['message'] = "ID perlengkapan tidak ditemukan.";
     $_SESSION['message_type'] = "error";
     header("Location: index.php");
     exit();
 }
 
-// Proses form jika ada data yang dikirim (POST request)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nama_barang = sanitizeInput($_POST['nama_barang'] ?? '');
     $jumlah = sanitizeInput($_POST['jumlah'] ?? '');
     $harga_satuan = sanitizeInput($_POST['harga_satuan'] ?? '');
     $tanggal_beli = sanitizeInput($_POST['tanggal_beli'] ?? '');
 
-    // Validasi
     if (empty($id_perlengkapan) || !is_numeric($id_perlengkapan)) { $errors[] = "ID perlengkapan tidak valid."; }
     if (empty($nama_barang)) { $errors[] = "Nama barang wajib diisi."; }
     if (!is_numeric($jumlah) || $jumlah <= 0) { $errors[] = "Jumlah harus angka positif."; }
     if (!is_numeric($harga_satuan) || $harga_satuan < 0) { $errors[] = "Harga satuan harus angka positif atau nol."; }
     if (empty($tanggal_beli)) { $errors[] = "Tanggal beli wajib diisi."; }
 
-    // Jika ada error validasi, simpan data POST ke session dan tampilkan di form
     if (!empty($errors)) {
         $_SESSION['form_data'] = $_POST;
         header("Location: edit.php?id=" . urlencode($id_perlengkapan));
         exit();
     }
 
-    // --- Proses Update (jika validasi berhasil) ---
     $conn->begin_transaction();
-    $old_perlengkapan_data = []; // Untuk rollback data perlengkapan
-    $old_keuangan_data = []; // Untuk rollback data keuangan
+    $old_perlengkapan_data = []; 
+    $old_keuangan_data = [];
 
     try {
-        // 1. Ambil data perlengkapan lama untuk rollback
         $stmt_get_old_perlengkapan = $conn->prepare("SELECT nama_barang, jumlah, harga_satuan, tanggal_beli FROM perlengkapan WHERE id = ?");
         $stmt_get_old_perlengkapan->bind_param("i", $id_perlengkapan);
         $stmt_get_old_perlengkapan->execute();
         $old_perlengkapan_data = $stmt_get_old_perlengkapan->get_result()->fetch_assoc();
         $stmt_get_old_perlengkapan->close();
 
-        // 2. Update data perlengkapan di tabel `perlengkapan`
         $stmt_update_perlengkapan = $conn->prepare("UPDATE perlengkapan SET nama_barang = ?, jumlah = ?, harga_satuan = ?, tanggal_beli = ? WHERE id = ?");
         $stmt_update_perlengkapan->bind_param("sidsi", $nama_barang, $jumlah, $harga_satuan, $tanggal_beli, $id_perlengkapan);
         $stmt_update_perlengkapan->execute();
@@ -89,16 +72,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $stmt_update_perlengkapan->close();
 
-        // 3. Update transaksi keuangan terkait perlengkapan ini
-        // Ambil ID transaksi keuangan yang terkait dengan perlengkapan ini
         $stmt_get_keuangan_id = $conn->prepare("SELECT id, jenis, keterangan, jumlah, tanggal FROM keuangan WHERE keterangan LIKE CONCAT('Pembelian Perlengkapan: ', ?, '%') ORDER BY id DESC LIMIT 1");
-        $stmt_get_keuangan_id->bind_param("s", $old_perlengkapan_data['nama_barang']); // Menggunakan nama barang lama untuk mencari
+        $stmt_get_keuangan_id->bind_param("s", $old_perlengkapan_data['nama_barang']); 
         $stmt_get_keuangan_id->execute();
         $keuangan_data = $stmt_get_keuangan_id->get_result()->fetch_assoc();
         $stmt_get_keuangan_id->close();
 
         if ($keuangan_data) {
-            $old_keuangan_data = $keuangan_data; // Simpan untuk rollback
+            $old_keuangan_data = $keuangan_data;
             $total_biaya_item_baru = $jumlah * $harga_satuan;
             $keterangan_keuangan_baru = "Pembelian Perlengkapan: " . $nama_barang . " (ID: " . $id_perlengkapan . ") - Diperbarui";
             $stmt_update_keuangan = $conn->prepare("UPDATE keuangan SET keterangan = ?, jumlah = ?, tanggal = ? WHERE id = ?");
@@ -109,7 +90,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $stmt_update_keuangan->close();
         } else {
-            // Jika tidak ada transaksi keuangan terkait sebelumnya, buat yang baru
             $total_biaya_item_baru = $jumlah * $harga_satuan;
             $keterangan_keuangan_baru = "Pembelian Perlengkapan: " . $nama_barang . " (ID: " . $id_perlengkapan . ")";
             $jenis_keuangan = 'pengeluaran';
@@ -130,7 +110,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     } catch (mysqli_sql_exception $e) {
         $conn->rollback();
-        // Rollback data perlengkapan
         if (!empty($old_perlengkapan_data)) {
             $stmt_rollback_perlengkapan = $conn->prepare("UPDATE perlengkapan SET nama_barang = ?, jumlah = ?, harga_satuan = ?, tanggal_beli = ? WHERE id = ?");
             $stmt_rollback_perlengkapan->bind_param("sidsi",
@@ -143,7 +122,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt_rollback_perlengkapan->execute();
             $stmt_rollback_perlengkapan->close();
         }
-        // Rollback data keuangan jika ada
         if (!empty($old_keuangan_data)) {
             $stmt_rollback_keuangan = $conn->prepare("UPDATE keuangan SET jenis = ?, keterangan = ?, jumlah = ?, tanggal = ? WHERE id = ?");
             $stmt_rollback_keuangan->bind_param("ssdsi",
@@ -166,13 +144,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// =========================================================================
-// Bagian Pengambilan Data untuk Tampilan Form (Jika bukan POST atau ada error POST)
-// =========================================================================
-
-// Jika ini GET request atau POST request dengan error, ambil data dari DB atau session
 if (!isset($_POST['id']) || !empty($errors)) {
-    // Ambil data perlengkapan dari database berdasarkan ID
     $stmt_get_data = $conn->prepare("SELECT id, nama_barang, jumlah, harga_satuan, tanggal_beli FROM perlengkapan WHERE id = ?");
     $stmt_get_data->bind_param("i", $id_perlengkapan);
     $stmt_get_data->execute();
@@ -193,7 +165,6 @@ if (!isset($_POST['id']) || !empty($errors)) {
     $stmt_get_data->close();
 }
 
-// Jika ada data form dari session (setelah redirect karena error validasi), gunakan data itu
 if (isset($_SESSION['form_data'])) {
     $nama_barang = $_SESSION['form_data']['nama_barang'] ?? $nama_barang;
     $jumlah = $_SESSION['form_data']['jumlah'] ?? $jumlah;
@@ -201,7 +172,6 @@ if (isset($_SESSION['form_data'])) {
     $tanggal_beli = $_SESSION['form_data']['tanggal_beli'] ?? $tanggal_beli;
     unset($_SESSION['form_data']);
 }
-// Ambil pesan error dari session jika ada
 if (isset($_SESSION['errors'])) {
     $errors = array_merge($errors, $_SESSION['errors']);
     unset($_SESSION['errors']);

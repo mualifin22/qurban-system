@@ -1,39 +1,24 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-// =========================================================================
-// Bagian Pemrosesan Logika PHP (Harus di atas, sebelum output HTML dimulai)
-// =========================================================================
+include '../../includes/db.php';    
+include '../../includes/functions.php'; 
 
-include '../../includes/db.php';        // Koneksi database
-include '../../includes/functions.php';  // Fungsi-fungsi helper
-
-// Pastikan session sudah dimulai. Ini penting untuk mengakses $_SESSION.
 if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Sertakan autoload Composer untuk library QR Code
-require_once '../../vendor/autoload.php';
-
-use chillerlan\QRCode\{QRCode, QROptions};
-
-// Cek apakah user sudah login. Jika belum, redirect ke halaman login.
 if (!isLoggedIn()) {
     redirectToLogin();
 }
 
-// Inisialisasi variabel untuk NIK warga yang akan ditampilkan QR Code-nya.
-// Defaultnya adalah NIK dari user yang sedang login.
 $nik_warga_login = $_SESSION['nik_warga'] ?? null;
 $user_role = $_SESSION['role'];
 $target_nik = $nik_warga_login;
-$errors = []; // Untuk menyimpan pesan error
+$errors = [];
 
-// Logika untuk Admin atau Panitia yang mencari QR Code warga lain:
 if ((isAdmin() || isPanitia()) && isset($_GET['nik']) && !empty($_GET['nik'])) {
     $requested_nik = sanitizeInput($_GET['nik']);
 
@@ -45,12 +30,11 @@ if ((isAdmin() || isPanitia()) && isset($_GET['nik']) && !empty($_GET['nik'])) {
         $target_nik = $requested_nik;
     } else {
         $errors[] = "NIK warga yang dicari tidak ditemukan.";
-        $target_nik = $nik_warga_login; // Fallback to current logged-in user's NIK
+        $target_nik = $nik_warga_login; 
     }
     $stmt_check_nik->close();
 }
 
-// Jika setelah semua logika di atas, target_nik masih kosong (misal: admin tanpa NIK pribadi dan tidak mencari NIK lain)
 if (empty($target_nik)) {
     $_SESSION['message'] = "Tidak ada NIK warga yang valid untuk ditampilkan Kartu Qurban. Pastikan akun Anda terhubung dengan data warga atau cari NIK warga lain.";
     $_SESSION['message_type'] = "error";
@@ -58,7 +42,6 @@ if (empty($target_nik)) {
     exit();
 }
 
-// Ambil data detail warga berdasarkan $target_nik
 $warga_data = null;
 $stmt_warga = $conn->prepare("SELECT nik, nama, alamat, no_hp, status_qurban, status_panitia FROM warga WHERE nik = ?");
 $stmt_warga->bind_param("s", $target_nik);
@@ -72,7 +55,6 @@ if ($result_warga->num_rows > 0) {
 }
 $stmt_warga->close();
 
-// Ambil informasi jatah daging dari tabel `pembagian_daging` untuk warga ini
 $jatah_daging = 0;
 $status_pengambilan = false;
 $tanggal_distribusi_daging = 'Belum ditentukan';
@@ -93,8 +75,6 @@ if ($warga_data) {
     $stmt_jatah->close();
 }
 
-
-// Siapkan konten untuk QR Code (dalam format JSON string)
 $qr_content_data = [
     "NIK"                 => $warga_data['nik'] ?? 'N/A',
     "Nama"                => $warga_data['nama'] ?? 'N/A',
@@ -102,29 +82,9 @@ $qr_content_data = [
     "Status_Pengambilan"  => $status_pengambilan ? "Sudah Diambil" : "Belum Diambil",
     "Tanggal_Distribusi"  => $tanggal_distribusi_daging
 ];
-$qr_content = json_encode($qr_content_data);
+$qr_content_json = json_encode($qr_content_data); 
 
-// Generate QR Code
-$options = new QROptions([
-    'outputType'  => QRCode::OUTPUT_IMAGE_PNG,
-    'eccLevel'    => QRCode::ECC_L,
-    'scale'       => 8,
-    'imageBase64' => true,
-    'bgColor'     => [255, 255, 255],
-    'fgColor'     => [0, 0, 0]
-]);
-
-$qrcode = '';
-try {
-    $qrcode = (new QRCode($options))->render($qr_content);
-} catch (\Throwable $th) {
-    $errors[] = "Gagal membuat QR Code: " . $th->getMessage();
-    $qrcode = 'data:image/png;base64,iVBORw0KGgoAAAABAAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='; // Placeholder blank image
-}
-
-// =========================================================================
-// Bagian Tampilan HTML (Dimulai setelah semua logika PHP selesai)
-// =========================================================================
+$qrcode_placeholder_id = "qrcodeCanvas"; 
 include '../../includes/header.php';
 ?>
 
@@ -133,7 +93,6 @@ include '../../includes/header.php';
 </div>
 
 <?php
-// Tampilkan pesan sukses/error/info
 if (isset($_SESSION['message'])) {
     echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : ($_SESSION['message_type'] == 'info' ? 'info' : 'success')) . ' alert-dismissible fade show" role="alert">';
     echo htmlspecialchars($_SESSION['message']);
@@ -170,7 +129,7 @@ if (!empty($errors)) {
                     
                     <div class="row align-items-center mb-3">
                         <div class="col-md-6 text-center">
-                            <img src="<?php echo $qrcode; ?>" alt="QR Code Pengambilan Daging" class="img-fluid" style="border: 1px solid #ddd; padding: 5px; max-width: 200px;">
+                            <div id="<?php echo $qrcode_placeholder_id; ?>" style="border: 1px solid #ddd; padding: 5px; max-width: 200px; margin: 0 auto;"></div>
                             <p class="small text-muted mt-2 mb-0">Scan untuk Verifikasi</p>
                         </div>
                         <div class="col-md-6 text-left">
@@ -231,60 +190,80 @@ if (!empty($errors)) {
 include '../../includes/footer.php';
 ?>
 
+<script src="/sistem_qurban/public/js/qrcode.min.js"></script>
+
 <script>
+var qrContentJson = <?php echo $qr_content_json; ?>;
+var qrcodePlaceholderId = "<?php echo $qrcode_placeholder_id; ?>";
+var qrcodeInstance = null; 
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (qrContentJson) {
+        var element = document.getElementById(qrcodePlaceholderId);
+        if (element) {
+            qrcodeInstance = new QRCode(element, {
+                text: JSON.stringify(qrContentJson), 
+                width: 200, 
+                height: 200,
+                colorDark : "#000000",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.L // ECC Level L
+            });
+
+            setTimeout(function() {
+                var qrCanvas = element.querySelector('canvas');
+                if (qrCanvas) {
+                    window.qrImageDataUrlForPrint = qrCanvas.toDataURL("image/png");
+                }
+            }, 100); // Tunda sebentar
+        }
+    }
+});
+
+
 function printCard() {
     var printContents = document.getElementById('printableArea').innerHTML;
     var printWindow = window.open('', '_blank', 'height=600,width=800');
 
     printWindow.document.write('<html><head><title>Cetak Kartu Qurban</title>');
     
-    // Sertakan CSS dari SB Admin 2 agar styling Bootstrap tetap ada saat cetak
     printWindow.document.write('<link href="/sistem_qurban/public/css/sb-admin-2.min.css" rel="stylesheet">');
-    // Sertakan Font Awesome jika ada ikon di kartu
     printWindow.document.write('<link href="/sistem_qurban/public/vendor/fontawesome-free/css/all.min.css" rel="stylesheet" type="text/css">');
-    // Sertakan Font Nunito (jika penting untuk cetak)
     printWindow.document.write('<link href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet">');
 
-    // HANYA SERTAKAN CSS UTAMA, TANPA ATURAN @MEDIA PRINT KHUSUS UNTUK MENYEMBUNYIKAN
-    // printWindow.document.write('<style>');
-    // printWindow.document.write('body { margin: 20px; font-family: "Nunito", sans-serif; background-color: #fff; }');
-    // printWindow.document.write('.card { border: 1px solid #e3e6f0; border-radius: 0.35rem; box-shadow: none; }');
-    // printWindow.document.write('.card-header { padding: .75rem 1.25rem; margin-bottom: 0; background-color: #f8f9fc; border-bottom: 1px solid rgba(0,0,0,.125); }');
-    // printWindow.document.write('.card-body { padding: 1.25rem; }');
-    // printWindow.document.write('img.img-fluid { max-width: 100%; height: auto; display: block; }');
-    // printWindow.document.write('.text-center { text-align: center !important; }');
-    // printWindow.document.write('.mb-4 { margin-bottom: 1.5rem !important; }');
-    // printWindow.document.write('.mb-3 { margin-bottom: 1rem !important; }');
-    // printWindow.document.write('.mb-1 { margin-bottom: 0.25rem !important; }');
-    // printWindow.document.write('.mt-2 { margin-top: 0.5rem !important; }');
-    // printWindow.document.write('.p-2 { padding: 0.5rem !important; }');
-    // printWindow.document.write('.badge { display: inline-block; padding: 0.35em 0.65em; font-size: .75em; font-weight: 700; line-height: 1; text-align: center; white-space: nowrap; vertical-align: baseline; border-radius: .25rem; }');
-    // printWindow.document.write('.badge-success { color: #fff; background-color: #1cc88a; }');
-    // printWindow.document.write('.badge-warning { color: #fff; background-color: #f6c23e; }');
-    // printWindow.document.write('.text-primary { color: #4e73df !important; }');
-    // printWindow.document.write('.text-gray-900 { color: #3a3b45 !important; }');
-    // printWindow.document.write('.text-muted { color: #858796 !important; }');
-    // printWindow.document.write('.font-weight-bold { font-weight: 700 !important; }');
-    // printWindow.document.write('hr { border-top: 1px solid rgba(0,0,0,.1); margin-top: 1rem; margin-bottom: 1rem; }');
-    // printWindow.document.write('}'); // END @media print
+    printWindow.document.write('<link href="/sistem_qurban/public/css/print.css" rel="stylesheet" media="print">');
 
 
     printWindow.document.write('</head><body>');
-    // Bungkus konten yang akan dicetak dengan div agar memiliki lebar tetap
     printWindow.document.write('<div style="width: 100%; max-width: 400px; margin: 0 auto; padding: 10px;">');
-    printWindow.document.write(printContents);
+    
+    var tempDiv = document.createElement('div');
+    tempDiv.innerHTML = printContents;
+    var qrImgElement = tempDiv.querySelector('#' + qrcodePlaceholderId + ' canvas'); // Cari elemen canvas di dalam placeholder
+    
+    if (qrImgElement && window.qrImageDataUrlForPrint) {
+        var imgTag = document.createElement('img');
+        imgTag.src = window.qrImageDataUrlForPrint;
+        imgTag.alt = "QR Code Pengambilan Daging";
+        imgTag.style.maxWidth = '200px'; // Sesuaikan dengan ukuran yang diinginkan
+        imgTag.style.height = 'auto';
+        imgTag.style.display = 'block';
+        imgTag.style.margin = '0 auto';
+        
+        qrImgElement.parentNode.replaceChild(imgTag, qrImgElement);
+    }
+    printWindow.document.write(tempDiv.innerHTML);
+    
     printWindow.document.write('</div>');
     
     printWindow.document.write('</body></html>');
     printWindow.document.close();
     printWindow.focus();
 
-    // Picu dialog cetak secara otomatis setelah jendela dibuka dan konten dimuat
     printWindow.onload = function() {
         setTimeout(function() {
             printWindow.print();
-            // printWindow.close(); // Opsional: tutup jendela setelah print dialog muncul
-        }, 500); // Tunda 500ms (setengah detik)
+        }, 1000);
     };
 }
 </script>

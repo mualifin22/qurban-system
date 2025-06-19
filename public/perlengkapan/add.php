@@ -1,12 +1,7 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-
-// =========================================================================
-// Bagian Pemrosesan Logika PHP (Harus di atas, sebelum output HTML dimulai)
-// =========================================================================
 
 include '../../includes/db.php';
 include '../../includes/functions.php';
@@ -15,7 +10,6 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Hanya Admin atau Panitia yang bisa mengakses halaman ini
 if (!isAdmin() && !isPanitia()) {
     $_SESSION['message'] = "Anda tidak memiliki akses ke halaman ini.";
     $_SESSION['message_type'] = "error";
@@ -35,7 +29,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $harga_satuan = sanitizeInput($_POST['harga_satuan'] ?? '');
     $tanggal_beli = sanitizeInput($_POST['tanggal_beli'] ?? '');
 
-    // Validasi
     if (empty($nama_barang)) { $errors[] = "Nama barang wajib diisi."; }
     if (!is_numeric($jumlah) || $jumlah <= 0) { $errors[] = "Jumlah harus angka positif."; }
     if (!is_numeric($harga_satuan) || $harga_satuan < 0) { $errors[] = "Harga satuan harus angka positif atau nol."; }
@@ -55,7 +48,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id_perlengkapan = $conn->insert_id;
             $stmt_insert_perlengkapan->close();
 
-            // Tambahkan transaksi pengeluaran ke tabel keuangan
             $total_biaya_item = $jumlah * $harga_satuan;
             $keterangan_keuangan = "Pembelian Perlengkapan: " . $nama_barang . " (ID: " . $id_perlengkapan . ")";
             $jenis_keuangan = 'pengeluaran';
@@ -89,7 +81,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 } else {
-    // Jika bukan POST, ambil data form dari session jika ada
     if (isset($_SESSION['form_data'])) {
         $nama_barang = $_SESSION['form_data']['nama_barang'] ?? '';
         $jumlah = $_SESSION['form_data']['jumlah'] ?? '';
@@ -111,7 +102,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <?php
-// Tampilkan pesan sukses/error/info (yang kita simpan di $_SESSION)
 if (isset($_SESSION['message'])) {
     echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : ($_SESSION['message_type'] == 'info' ? 'info' : 'success')) . ' alert-dismissible fade show" role="alert">';
     echo htmlspecialchars($_SESSION['message']);
@@ -120,7 +110,6 @@ if (isset($_SESSION['message'])) {
     unset($_SESSION['message']);
     unset($_SESSION['message_type']);
 }
-// Tampilkan pesan error validasi (dari $errors array)
 if (!empty($errors)) {
     echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">';
     echo '<strong>Error!</strong> Mohon perbaiki kesalahan berikut:<ul>';

@@ -1,19 +1,12 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
-// ini_set('display_errors', 1);
-// ini_set('display_startup_errors', 1);
-// error_reporting(E_ALL);
-
 include '../includes/db.php';
 include '../includes/functions.php';
 
-// Jika user sudah login, redirect ke dashboard
 if (isLoggedIn()) {
     header("Location: dashboard.php");
     exit();
 }
 
-// Mulai session untuk menampilkan pesan error
 if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
@@ -21,15 +14,13 @@ if (session_status() == PHP_SESSION_NONE) {
 $error_message = '';
 if (isset($_SESSION['error_message'])) {
     $error_message = $_SESSION['error_message'];
-    unset($_SESSION['error_message']); // Hapus pesan error setelah ditampilkan
+    unset($_SESSION['error_message']); 
 }
 
-// Jika ada request POST dari form login
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = sanitizeInput($_POST['username'] ?? '');
     $password = sanitizeInput($_POST['password'] ?? '');
 
-    // Query untuk mengambil user dari database
     $stmt = $conn->prepare("SELECT id, username, password, role, nik_warga FROM users WHERE username = ?");
     $stmt->bind_param("s", $username);
     $stmt->execute();
@@ -37,15 +28,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($result->num_rows === 1) {
         $user = $result->fetch_assoc();
-        // Verifikasi password
         if (verifyPassword($password, $user['password'])) {
-            // Password benar, set session
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['username'] = $user['username'];
             $_SESSION['role'] = $user['role'];
             $_SESSION['nik_warga'] = $user['nik_warga'];
 
-            // Redirect ke dashboard
             header("Location: dashboard.php");
             exit();
         } else {
@@ -54,9 +42,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $error_message = "Username atau password salah.";
     }
-    // Jika ada error, simpan ke session untuk ditampilkan saat redirect
     $_SESSION['error_message'] = $error_message;
-    header("Location: index.php"); // Redirect kembali ke halaman ini untuk menampilkan error
+    header("Location: index.php"); 
     exit();
 }
 ?>

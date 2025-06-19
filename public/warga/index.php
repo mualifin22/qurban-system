@@ -1,12 +1,7 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-
-// =========================================================================
-// Bagian Pemrosesan Logika PHP (Harus di atas, sebelum output HTML dimulai)
-// =========================================================================
 
 include '../../includes/db.php';
 include '../../includes/functions.php';
@@ -15,7 +10,6 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Hanya Admin atau Panitia yang bisa mengakses halaman ini
 if (!isAdmin() && !isPanitia()) {
     $_SESSION['message'] = "Anda tidak memiliki akses ke halaman ini.";
     $_SESSION['message_type'] = "error";
@@ -23,7 +17,6 @@ if (!isAdmin() && !isPanitia()) {
     exit();
 }
 
-// Ambil data user dari database
 $sql = "SELECT w.nik, w.nama, w.alamat, w.no_hp, w.status_qurban, w.status_panitia, u.role as user_role
         FROM warga w
         LEFT JOIN users u ON w.nik = u.nik_warga
@@ -37,29 +30,24 @@ if ($result->num_rows > 0) {
     }
 }
 
-// --- Ambil Data untuk Ringkasan Dashboard ---
-// Total Warga Terdaftar
 $total_warga_terdaftar = 0;
 $result_total_warga = $conn->query("SELECT COUNT(*) AS total FROM warga");
 if ($result_total_warga) {
     $total_warga_terdaftar = $result_total_warga->fetch_assoc()['total'];
 }
 
-// Total Panitia
 $total_panitia = 0;
 $result_total_panitia = $conn->query("SELECT COUNT(*) AS total FROM warga WHERE status_panitia = 1");
 if ($result_total_panitia) {
     $total_panitia = $result_total_panitia->fetch_assoc()['total'];
 }
 
-// Total Pekurban
 $total_pekurban = 0;
 $result_total_pekurban = $conn->query("SELECT COUNT(*) AS total FROM warga WHERE status_qurban = 'peserta'");
 if ($result_total_pekurban) {
     $total_pekurban = $result_total_pekurban->fetch_assoc()['total'];
 }
 
-// Total Penerima Daging (bukan pekurban atau panitia yang menjadi peserta qurban)
 $total_penerima_daging_biasa = 0;
 $result_penerima_biasa = $conn->query("SELECT COUNT(*) AS total FROM warga 
                                        WHERE status_qurban = 'penerima' 
@@ -68,11 +56,7 @@ if ($result_penerima_biasa) {
     $total_penerima_daging_biasa = $result_penerima_biasa->fetch_assoc()['total'];
 }
 
-
-// =========================================================================
-// Bagian Tampilan HTML (Dimulai setelah semua logika PHP selesai)
-// =========================================================================
-include '../../includes/header.php'; // Sertakan header SB Admin 2
+include '../../includes/header.php'; 
 ?>
 
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
@@ -83,7 +67,6 @@ include '../../includes/header.php'; // Sertakan header SB Admin 2
 </div>
 
 <?php
-// Tampilkan pesan sukses/error/info (yang kita simpan di $_SESSION)
 if (isset($_SESSION['message'])) {
     echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : ($_SESSION['message_type'] == 'info' ? 'info' : 'success')) . ' alert-dismissible fade show" role="alert">';
     echo htmlspecialchars($_SESSION['message']);

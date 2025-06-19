@@ -1,12 +1,7 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-
-// =========================================================================
-// Bagian Pemrosesan Logika PHP (Harus di atas, sebelum output HTML dimulai)
-// =========================================================================
 
 include '../../includes/db.php';
 include '../../includes/functions.php';
@@ -15,7 +10,6 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Hanya Admin dan Panitia yang bisa mengakses halaman ini
 if (!isAdmin() && !isPanitia()) {
     $_SESSION['message'] = "Anda tidak memiliki akses ke halaman ini.";
     $_SESSION['message_type'] = "error";
@@ -26,7 +20,6 @@ if (!isAdmin() && !isPanitia()) {
 $errors = [];
 $tanggal_distribusi_default = date('Y-m-d');
 
-// --- Hitung Total Daging Qurban Tersedia ---
 $total_daging_tersedia_sql = "SELECT SUM(estimasi_berat_daging_kg) AS total_kg FROM hewan_qurban";
 $result_total_daging = $conn->query($total_daging_tersedia_sql);
 $total_daging_tersedia = 0;
@@ -35,13 +28,11 @@ if ($result_total_daging && $result_total_daging->num_rows > 0) {
     $total_daging_tersedia = (float)$row_total_daging['total_kg'];
 }
 
-// LOGIKA PENTING: Jika total daging tersedia 0, kosongkan tabel pembagian_daging
 if ($total_daging_tersedia <= 0) {
-    // Hanya TRUNCATE jika bukan POST request untuk generate_plan (yang punya logikanya sendiri)
     if (!isset($_POST['action']) || (isset($_POST['action']) && $_POST['action'] !== 'generate_plan')) {
         try {
             $conn->query("TRUNCATE TABLE pembagian_daging");
-            if (!isset($_SESSION['message']) || $_SESSION['message_type'] !== 'info') { // Hindari duplikasi pesan jika sudah di-TRUNCATE
+            if (!isset($_SESSION['message']) || $_SESSION['message_type'] !== 'info') { 
                 $_SESSION['message'] = "Tabel pembagian daging dikosongkan karena tidak ada daging qurban yang tersedia.";
                 $_SESSION['message_type'] = "info";
             }
@@ -50,7 +41,6 @@ if ($total_daging_tersedia <= 0) {
         }
     }
     
-    // Set variabel-variabel terkait jatah menjadi nol atau tidak relevan
     $jumlah_pekurban = 0;
     $jumlah_panitia = 0;
     $jumlah_penerima_umum = 0;
@@ -58,17 +48,14 @@ if ($total_daging_tersedia <= 0) {
     $jatah_warga_penerima_kg = 0;
     $final_recipients = []; // Pastikan ini juga kosong
 
-    // Tambahkan pesan error jika memang belum ada daging
     if (!isset($_SESSION['message_type']) || ($_SESSION['message_type'] !== 'info' && $_SESSION['message_type'] !== 'success')) {
         $errors[] = "Tidak ada daging qurban yang tersedia. Pembagian daging tidak dapat dilakukan.";
     }
 
 } else {
-    // --- Definisikan Jatah Daging per Kategori ---
-    $jatah_pekurban_kg = 2;   // Asumsi jatah untuk setiap pekurban
-    $jatah_panitia_kg = 1.5;  // Asumsi jatah untuk setiap panitia
+    $jatah_pekurban_kg = 2;
+    $jatah_panitia_kg = 1.5; 
 
-    // --- Dapatkan Daftar Semua Warga dengan Status Mereka ---
     $sql_all_warga = "SELECT nik, nama, status_qurban, status_panitia FROM warga ORDER BY nama ASC";
     $result_all_warga = $conn->query($sql_all_warga);
     $list_warga_dengan_status = [];
@@ -78,11 +65,9 @@ if ($total_daging_tersedia <= 0) {
         }
     }
 
-    // Inisialisasi array untuk menyimpan penerima akhir dengan jatahnya
     $final_recipients = [];
-    $daging_teralokasi_spesifik = 0; // Daging yang dialokasikan untuk pekurban dan panitia
+    $daging_teralokasi_spesifik = 0;
 
-    // Alokasikan jatah daging berdasarkan prioritas: Pekurban > Panitia > Penerima Umum
     foreach ($list_warga_dengan_status as $warga) {
         $nik = $warga['nik'];
         $nama = $warga['nama'];
@@ -111,7 +96,6 @@ if ($total_daging_tersedia <= 0) {
         ];
     }
 
-    // Hitung jatah untuk penerima umum dari sisa daging
     $sisa_daging_untuk_penerima_umum = $total_daging_tersedia - $daging_teralokasi_spesifik;
     $jumlah_penerima_umum = 0;
     foreach ($final_recipients as $recipient) {
@@ -127,22 +111,18 @@ if ($total_daging_tersedia <= 0) {
     if ($jatah_warga_penerima_kg < 0) $jatah_warga_penerima_kg = 0;
     if ($sisa_daging_untuk_penerima_umum < 0) $sisa_daging_untuk_penerima_umum = 0;
 
-
-    // Perbarui jatah akhir untuk penerima umum di $final_recipients
     foreach ($final_recipients as $nik => $recipient) {
         if ($recipient['kategori'] === 'penerima_umum') {
             $final_recipients[$nik]['jatah_kg'] = $jatah_warga_penerima_kg;
         }
     }
 
-    // Hapus penerima dengan jatah 0 kg
     $final_recipients = array_filter($final_recipients, function($recipient) {
         return $recipient['jatah_kg'] > 0;
     });
 
-    // Menghitung jumlah pekurban dan panitia yang benar-benar dialokasikan jatahnya
-    $jumlah_pekurban = 0; // Reset untuk perhitungan akurat dari final_recipients
-    $jumlah_panitia = 0; // Reset untuk perhitungan akurat dari final_recipients
+    $jumlah_pekurban = 0; 
+    $jumlah_panitia = 0; 
     foreach ($final_recipients as $recipient) {
         if ($recipient['kategori'] === 'pekurban') {
             $jumlah_pekurban++;
@@ -151,15 +131,11 @@ if ($total_daging_tersedia <= 0) {
         }
     }
 
-} // END if ($total_daging_tersedia <= 0) ELSE
-
-// =========================================================================
-// Proses Simpan Rencana Pembagian Daging (Jika tombol "Generate & Simpan Rencana" ditekan)
-// =========================================================================
+} 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'generate_plan') {
     $tanggal_distribusi = sanitizeInput($_POST['tanggal_distribusi']);
 
-    if ($total_daging_tersedia <= 0) { // Validasi tambahan jika total daging tersedia 0
+    if ($total_daging_tersedia <= 0) {
         $_SESSION['message'] = "Tidak ada daging qurban yang tersedia, rencana pembagian tidak dapat digenerate.";
         $_SESSION['message_type'] = "error";
         header("Location: pembagian.php");
@@ -173,16 +149,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     if (empty($errors)) {
         $conn->begin_transaction();
         try {
-            $conn->query("TRUNCATE TABLE pembagian_daging"); // Kosongkan sebelum mengisi ulang
+            $conn->query("TRUNCATE TABLE pembagian_daging"); 
 
             $stmt_insert = $conn->prepare("INSERT INTO pembagian_daging (id_hewan_qurban, nik_warga, jumlah_daging_kg, tanggal_distribusi) VALUES (?, ?, ?, ?)");
-            $id_qurban_placeholder = 0; // Tetap 0 atau NULL karena bukan dari 1 hewan spesifik
+            $id_qurban_placeholder = 0;
             
             foreach ($final_recipients as $recipient) {
                 $nik = $recipient['nik'];
                 $jumlah_daging = $recipient['jatah_kg'];
                 
-                if ($jumlah_daging > 0) { // Hanya masukkan yang jatahnya > 0
+                if ($jumlah_daging > 0) { 
                     $stmt_insert->bind_param("isds", $id_qurban_placeholder, $nik, $jumlah_daging, $tanggal_distribusi);
                     $stmt_insert->execute();
                     if ($stmt_insert->error) {
@@ -207,9 +183,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-// =========================================================================
-// Proses Update Status Pengambilan Daging (Jika tombol "Ambil" ditekan)
-// =========================================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_status_pengambilan') {
     $id_pembagian = sanitizeInput($_POST['id_pembagian']);
     $status_pengambilan = isset($_POST['status_pengambilan']) ? 1 : 0; 
@@ -234,12 +207,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-// =========================================================================
-// Bagian Tampilan HTML (Dimulai setelah semua logika PHP selesai)
-// =========================================================================
-include '../../includes/header.php'; // Sertakan header SB Admin 2
+include '../../includes/header.php'; 
 
-// Ambil data pembagian daging yang sudah tersimpan untuk ditampilkan di tabel
 $sql_pembagian = "SELECT pd.id, pd.nik_warga, w.nama, pd.jumlah_daging_kg, pd.tanggal_distribusi, pd.status_pengambilan
                   FROM pembagian_daging pd
                   JOIN warga w ON pd.nik_warga = w.nik
@@ -259,7 +228,6 @@ if ($result_pembagian && $result_pembagian->num_rows > 0) {
 </div>
 
 <?php
-// Tampilkan pesan sukses/error/info (yang kita simpan di $_SESSION)
 if (isset($_SESSION['message'])) {
     echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : ($_SESSION['message_type'] == 'info' ? 'info' : 'success')) . ' alert-dismissible fade show" role="alert">';
     echo htmlspecialchars($_SESSION['message']);
@@ -362,7 +330,6 @@ if (!empty($errors)) {
                         $no = 1;
                         foreach($data_pembagian as $row) {
                             $kategori_display = '';
-                            // Re-derive kategori berdasarkan jatah
                             if ($row['jumlah_daging_kg'] == $jatah_pekurban_kg) {
                                 $kategori_display = '<span class="badge badge-success">Pekurban</span>';
                             } elseif ($row['jumlah_daging_kg'] == $jatah_panitia_kg) {

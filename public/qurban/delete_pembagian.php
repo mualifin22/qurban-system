@@ -4,9 +4,8 @@ session_start();
 include '../../includes/db.php';
 include '../../includes/functions.php';
 
-// Hanya Admin dan Panitia yang bisa menghapus
 if (!isAdmin() && !isPanitia()) {
-    redirectToLogin(); // Atau halaman error unauthorized
+    redirectToLogin(); 
 }
 
 if (isset($_GET['id'])) {

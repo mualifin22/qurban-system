@@ -1,12 +1,7 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-
-// =========================================================================
-// Bagian Pemrosesan Logika PHP (Struktur disesuaikan dengan referensi)
-// =========================================================================
 
 include '../../includes/db.php';
 include '../../includes/functions.php';
@@ -15,15 +10,13 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Hanya Admin yang bisa mengakses halaman ini (Sama seperti referensi)
 if (!isAdmin()) {
     $_SESSION['message'] = "Anda tidak memiliki akses ke halaman ini.";
     $_SESSION['message_type'] = "error";
-    header("Location: ../dashboard.php"); // Sesuaikan jika perlu
+    header("Location: ../dashboard.php"); 
     exit();
 }
 
-// Inisialisasi variabel
 $jenis = '';
 $keterangan = '';
 $jumlah = '';
@@ -31,20 +24,18 @@ $tanggal = date('Y-m-d');
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Ambil dan sanitasi data dari form
     $jenis = sanitizeInput($_POST['jenis'] ?? '');
     $keterangan = sanitizeInput($_POST['keterangan'] ?? '');
     $jumlah = sanitizeInput($_POST['jumlah'] ?? '');
     $tanggal = sanitizeInput($_POST['tanggal'] ?? '');
 
-    // Validasi
     if (empty($jenis) || !in_array($jenis, ['pemasukan', 'pengeluaran'])) {
         $errors[] = "Jenis transaksi tidak valid.";
     }
     if (empty($keterangan)) {
         $errors[] = "Keterangan transaksi wajib diisi.";
     }
-    // Mengizinkan angka 0, tapi tidak negatif. Sesuaikan jika perlu.
+
     if (!is_numeric($jumlah) || $jumlah < 0) {
         $errors[] = "Jumlah harus berupa angka non-negatif.";
     }
@@ -52,51 +43,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = "Tanggal transaksi wajib diisi.";
     }
 
-    // Jika tidak ada error, proses ke database
     if (empty($errors)) {
-        // Menggunakan transaksi database seperti referensi
         $conn->begin_transaction();
 
         try {
             $stmt = $conn->prepare("INSERT INTO keuangan (jenis, keterangan, jumlah, tanggal) VALUES (?, ?, ?, ?)");
-            // Tipe data: string, string, double, string
             $stmt->bind_param("ssds", $jenis, $keterangan, $jumlah, $tanggal);
             $stmt->execute();
 
             if ($stmt->error) {
-                // Jika ada error dari statement, lempar exception untuk ditangkap
                 throw new mysqli_sql_exception("Error saat menyimpan transaksi: " . $stmt->error);
             }
             $stmt->close();
 
-            // Jika semua berhasil, commit transaksi
             $conn->commit();
 
             $_SESSION['message'] = "Transaksi keuangan berhasil ditambahkan.";
             $_SESSION['message_type'] = "success";
-            header("Location: index.php"); // Redirect ke halaman daftar keuangan
+            header("Location: index.php"); 
             exit();
 
         } catch (mysqli_sql_exception $e) {
-            // Jika terjadi error, batalkan semua perubahan
             $conn->rollback();
             
-            // Simpan pesan error dan data form ke session untuk ditampilkan setelah redirect
             $_SESSION['message'] = "Gagal menambahkan transaksi: " . $e->getMessage();
             $_SESSION['message_type'] = "error";
             $_SESSION['form_data'] = $_POST;
-            header("Location: add_keuangan.php"); // Redirect kembali ke form tambah
+            header("Location: add_keuangan.php"); 
             exit();
         }
     } else {
-        // Jika ada error validasi, simpan error dan data form ke session
         $_SESSION['errors'] = $errors;
         $_SESSION['form_data'] = $_POST;
-        header("Location: add_keuangan.php"); // Redirect kembali ke form tambah
+        header("Location: add_keuangan.php");
         exit();
     }
 } else {
-    // Jika bukan request POST, cek apakah ada data form/error dari redirect sebelumnya
     if (isset($_SESSION['form_data'])) {
         $jenis = $_SESSION['form_data']['jenis'] ?? '';
         $keterangan = $_SESSION['form_data']['keterangan'] ?? '';
@@ -110,9 +92,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// =========================================================================
-// Bagian Tampilan HTML (Struktur disesuaikan dengan referensi)
-// =========================================================================
 ?>
 <?php include '../../includes/header.php'; ?>
 
@@ -121,7 +100,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <?php
-// Tampilkan pesan sukses/error/info dari $_SESSION (Sesuai Referensi)
 if (isset($_SESSION['message'])) {
     echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : 'success') . ' alert-dismissible fade show" role="alert">';
     echo htmlspecialchars($_SESSION['message']);
@@ -131,7 +109,6 @@ if (isset($_SESSION['message'])) {
     unset($_SESSION['message_type']);
 }
 
-// Tampilkan pesan error validasi dari array $errors (Sesuai Referensi)
 if (!empty($errors)) {
     echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">';
     echo '<strong>Error!</strong> Mohon perbaiki kesalahan berikut:<ul>';

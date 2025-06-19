@@ -4,15 +4,13 @@ session_start();
 include '../../includes/db.php';
 include '../../includes/functions.php';
 
-if (!isAdmin()) { // Hanya Admin yang bisa menghapus transaksi keuangan
+if (!isAdmin()) { 
     redirectToLogin();
 }
 
 if (isset($_GET['id'])) {
     $id_to_delete = sanitizeInput($_GET['id']);
 
-    // Cek apakah transaksi ini terkait dengan hewan qurban
-    // Transaksi terkait hewan qurban sebaiknya tidak dihapus manual
     $stmt_check_relation = $conn->prepare("SELECT id_hewan_qurban FROM keuangan WHERE id = ?");
     $stmt_check_relation->bind_param("i", $id_to_delete);
     $stmt_check_relation->execute();

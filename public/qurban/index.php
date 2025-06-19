@@ -1,12 +1,7 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-
-// =========================================================================
-// Bagian Pemrosesan Logika PHP (Harus di atas, sebelum output HTML dimulai)
-// =========================================================================
 
 include '../../includes/db.php';
 include '../../includes/functions.php';
@@ -15,7 +10,6 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Hanya Admin atau Panitia yang bisa mengakses halaman ini
 if (!isAdmin() && !isPanitia()) {
     $_SESSION['message'] = "Anda tidak memiliki akses ke halaman ini.";
     $_SESSION['message_type'] = "error";
@@ -23,7 +17,6 @@ if (!isAdmin() && !isPanitia()) {
     exit();
 }
 
-// Ambil data hewan qurban
 $sql = "SELECT h.id, h.jenis_hewan, h.harga, h.biaya_administrasi, h.tanggal_beli, h.estimasi_berat_daging_kg, h.nik_peserta_tunggal
         FROM hewan_qurban h ORDER BY h.tanggal_beli DESC";
 $result = $conn->query($sql);
@@ -45,10 +38,7 @@ if ($result->num_rows > 0) {
     }
 }
 
-// =========================================================================
-// Bagian Tampilan HTML (Dimulai setelah semua logika PHP selesai)
-// =========================================================================
-include '../../includes/header.php'; // Sertakan header SB Admin 2
+include '../../includes/header.php'; 
 ?>
 
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
@@ -64,7 +54,6 @@ include '../../includes/header.php'; // Sertakan header SB Admin 2
 </div>
 
 <?php
-// Tampilkan pesan sukses/error/info (yang kita simpan di $_SESSION)
 if (isset($_SESSION['message'])) {
     echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : ($_SESSION['message_type'] == 'info' ? 'info' : 'success')) . ' alert-dismissible fade show" role="alert">';
     echo htmlspecialchars($_SESSION['message']);

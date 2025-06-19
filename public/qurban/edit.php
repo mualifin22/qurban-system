@@ -1,12 +1,7 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-
-// =========================================================================
-// Bagian Pemrosesan Logika PHP (Harus di atas, sebelum output HTML dimulai)
-// =========================================================================
 
 include '../../includes/db.php';
 include '../../includes/functions.php';
@@ -19,22 +14,19 @@ if (!isLoggedIn()) {
     redirectToLogin();
 }
 
-$id_qurban = ''; // ID hewan qurban yang akan diedit (dari GET atau POST)
+$id_qurban = '';
 $jenis_hewan = $harga = $biaya_administrasi = $estimasi_berat_daging_kg = '';
 $tanggal_beli = date('Y-m-d');
-$nik_peserta = ''; // NIK peserta kambing (untuk tampilan form)
-$selected_peserta = []; // Array untuk menyimpan NIK peserta sapi yang sudah ada (untuk tampilan form)
-$errors = []; // Untuk menampilkan error validasi
+$nik_peserta = ''; 
+$selected_peserta = []; 
+$errors = [];
 
-// Ambil ID qurban dari URL (GET) jika ini request awal
 if (isset($_GET['id'])) {
     $id_qurban = sanitizeInput($_GET['id']);
 }
-// Jika ini adalah POST request (form disubmit), ambil ID dari hidden field
 elseif (isset($_POST['id'])) {
     $id_qurban = sanitizeInput($_POST['id']);
 }
-// Jika tidak ada ID sama sekali, redirect
 else {
     $_SESSION['message'] = "ID hewan qurban tidak ditemukan.";
     $_SESSION['message_type'] = "error";
@@ -42,9 +34,7 @@ else {
     exit();
 }
 
-// Proses form jika ada data yang dikirim (POST request)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Ambil data dari POST
     $id_qurban = sanitizeInput($_POST['id'] ?? '');
     $jenis_hewan = sanitizeInput($_POST['jenis_hewan'] ?? '');
     $harga = sanitizeInput($_POST['harga'] ?? '');
@@ -54,7 +44,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nik_peserta_kambing_baru = sanitizeInput($_POST['nik_peserta'] ?? '');
     $new_peserta_sapi = isset($_POST['peserta']) ? $_POST['peserta'] : [];
 
-    // --- Validasi Data ---
     if (empty($id_qurban) || !is_numeric($id_qurban)) { $errors[] = "ID hewan qurban tidak valid."; }
     if (empty($jenis_hewan) || !in_array($jenis_hewan, ['kambing', 'sapi'])) { $errors[] = "Jenis hewan tidak valid."; }
     if (!is_numeric($harga) || $harga <= 0) { $errors[] = "Harga harus angka positif."; }
@@ -62,7 +51,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!is_numeric($estimasi_berat_daging_kg) || $estimasi_berat_daging_kg <= 0) { $errors[] = "Estimasi berat daging harus angka positif."; }
     if (empty($tanggal_beli)) { $errors[] = "Tanggal beli wajib diisi."; }
 
-    // Validasi Khusus Kambing
     if ($jenis_hewan === 'kambing') {
         if (empty($nik_peserta_kambing_baru)) { $errors[] = "Peserta qurban kambing wajib dipilih."; }
         $stmt_check_nik_kambing = $conn->prepare("SELECT COUNT(*) FROM warga WHERE nik = ?");
@@ -72,9 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = "NIK peserta kambing tidak ditemukan dalam data warga.";
         }
         $stmt_check_nik_kambing->close();
-    }
-    // Validasi Khusus Sapi
-    elseif ($jenis_hewan === 'sapi') {
+    } elseif ($jenis_hewan === 'sapi') {
         if (count($new_peserta_sapi) !== 7) {
             $errors[] = "Qurban sapi harus memiliki tepat 7 peserta.";
         }
@@ -90,20 +76,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // Jika ada error validasi, simpan data POST ke session dan tampilkan di form
     if (!empty($errors)) {
         $_SESSION['form_data'] = $_POST;
         header("Location: edit.php?id=" . urlencode($id_qurban));
         exit();
     }
 
-    // --- Proses Update (jika validasi berhasil) ---
     $conn->begin_transaction();
-    $old_participant_niks = []; // Untuk menyimpan NIK peserta lama (baik kambing/sapi)
-    $old_statuses_for_rollback = []; // Untuk menyimpan status_qurban warga asli untuk rollback
+    $old_participant_niks = []; 
+    $old_statuses_for_rollback = []; 
 
     try {
-        // 1. Ambil NIK peserta lama (sebelum update)
         $stmt_get_old_participants = null;
         if ($jenis_hewan === 'kambing') {
             $stmt_get_old_participants = $conn->prepare("SELECT nik_peserta_tunggal FROM hewan_qurban WHERE id = ?");
@@ -119,18 +102,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             while($row = $result_old_participants->fetch_assoc()) {
                 if ($jenis_hewan === 'kambing') {
                     if (!empty($row['nik_peserta_tunggal'])) $old_participant_niks[] = $row['nik_peserta_tunggal'];
-                } else { // Sapi
+                } else { 
                     $old_participant_niks[] = $row['nik_warga'];
                 }
             }
             $stmt_get_old_participants->close();
         }
 
-        // 2. Update data hewan qurban
+
         if ($jenis_hewan === 'kambing') {
             $stmt_update_hewan = $conn->prepare("UPDATE hewan_qurban SET harga = ?, biaya_administrasi = ?, tanggal_beli = ?, estimasi_berat_daging_kg = ?, nik_peserta_tunggal = ? WHERE id = ?");
             $stmt_update_hewan->bind_param("ddsdsi", $harga, $biaya_administrasi, $tanggal_beli, $estimasi_berat_daging_kg, $nik_peserta_kambing_baru, $id_qurban);
-        } else { // Sapi
+        } else { 
             $stmt_update_hewan = $conn->prepare("UPDATE hewan_qurban SET harga = ?, biaya_administrasi = ?, tanggal_beli = ?, estimasi_berat_daging_kg = ? WHERE id = ?");
             $stmt_update_hewan->bind_param("ddsdi", $harga, $biaya_administrasi, $tanggal_beli, $estimasi_berat_daging_kg, $id_qurban);
         }
@@ -138,7 +121,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($stmt_update_hewan->error) { throw new mysqli_sql_exception("Error saat memperbarui data hewan_qurban: " . $stmt_update_hewan->error); }
         $stmt_update_hewan->close();
 
-        // 3. Update data keuangan (pengeluaran pembelian hewan)
         $stmt_del_keuangan_beli = $conn->prepare("DELETE FROM keuangan WHERE id_hewan_qurban = ? AND jenis = 'pengeluaran' AND keterangan LIKE 'Pembelian Qurban %'");
         $stmt_del_keuangan_beli->bind_param("i", $id_qurban);
         $stmt_del_keuangan_beli->execute();
@@ -153,27 +135,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($stmt_keuangan_beli->error) { throw new mysqli_sql_exception("Error saat memasukkan pengeluaran pembelian setelah update: " . $stmt_keuangan_beli->error); }
         $stmt_keuangan_beli->close();
 
-        // 4. Update pemasukan iuran sesuai jenis hewan
         $stmt_delete_iuran_keuangan = $conn->prepare("DELETE FROM keuangan WHERE jenis = 'pemasukan' AND (keterangan LIKE CONCAT('Iuran Qurban Sapi ID ', ?, '%') OR keterangan LIKE CONCAT('Iuran Qurban Kambing ID ', ?, '%'))");
         $stmt_delete_iuran_keuangan->bind_param("ii", $id_qurban, $id_qurban);
         $stmt_delete_iuran_keuangan->execute();
         $stmt_delete_iuran_keuangan->close();
 
-        // Dapatkan daftar NIK peserta yang baru
         $current_participant_niks = [];
         if ($jenis_hewan === 'kambing') {
             if (!empty($nik_peserta_kambing_baru)) {
                 $current_participant_niks[] = $nik_peserta_kambing_baru;
             }
-        } else { // Sapi
+        } else { 
             $current_participant_niks = $new_peserta_sapi;
         }
 
-        // --- KOREKSI UTAMA: Kelola status_qurban untuk SEMUA NIK yang relevan ---
-        // Kumpulkan semua NIK yang terlibat (lama dan baru)
         $all_involved_niks = array_unique(array_merge($old_participant_niks, $current_participant_niks));
 
-        // Simpan status_qurban asli dari NIK yang akan diubah/dicek, untuk rollback
         foreach ($all_involved_niks as $nik_check) {
             if (!empty($nik_check)) {
                 $stmt_get_current_status = $conn->prepare("SELECT status_qurban FROM warga WHERE nik = ?");
@@ -189,7 +166,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // Proses khusus untuk peserta baru (set ke 'peserta') dan iuran
         if ($jenis_hewan === 'kambing') {
             if (!empty($nik_peserta_kambing_baru)) {
                 $stmt_keuangan_iuran = $conn->prepare("INSERT INTO keuangan (jenis, keterangan, jumlah, tanggal) VALUES (?, ?, ?, ?)");
@@ -225,16 +201,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt_insert_peserta->close();
         }
 
-        // FINAL KOREKSI: Perbarui status_qurban untuk semua NIK yang terlibat
-        // Ini adalah loop yang akan menentukan status akhir untuk setiap NIK yang berubah
-        // atau mungkin tetap sama, setelah semua perubahan qurban ini.
         foreach ($all_involved_niks as $nik_check) {
             if (empty($nik_check)) continue;
 
-            // Cek apakah NIK ini TERMASUK dalam peserta yang BARU (akan jadi 'peserta')
             $is_current_participant = in_array($nik_check, $current_participant_niks);
 
-            // Cek apakah NIK ini masih terdaftar sebagai peserta di Qurban lain (selain yang sedang diedit)
             $stmt_check_other_kambing = $conn->prepare("SELECT COUNT(*) FROM hewan_qurban WHERE nik_peserta_tunggal = ? AND id != ?");
             $stmt_check_other_kambing->bind_param("si", $nik_check, $id_qurban);
             $stmt_check_other_kambing->execute();
@@ -248,8 +219,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt_check_other_sapi->close();
             
             $is_participant_anywhere = $is_current_participant || $is_kambing_participant_elsewhere || $is_sapi_participant_elsewhere;
-
-            // Cek apakah NIK ini adalah panitia
             $stmt_check_panitia = $conn->prepare("SELECT status_panitia FROM warga WHERE nik = ?");
             $stmt_check_panitia->bind_param("s", $nik_check);
             $stmt_check_panitia->execute();
@@ -260,13 +229,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($is_participant_anywhere) {
                 $new_status_qurban_for_warga = 'peserta';
             } elseif ($is_panitia) {
-                $new_status_qurban_for_warga = 'penerima'; // Panitia yang bukan peserta qurban, asumsikan penerima
+                $new_status_qurban_for_warga = 'penerima';
             } else {
-                $new_status_qurban_for_warga = 'penerima'; // Default jika tidak ada status khusus
+                $new_status_qurban_for_warga = 'penerima'; 
             }
 
-            // Dapatkan status_qurban dari DB SEBELUM UPDATE ini
-            $current_db_status_qurban = $old_statuses_for_rollback[$nik_check] ?? 'penerima'; // Fallback
+            $current_db_status_qurban = $old_statuses_for_rollback[$nik_check] ?? 'penerima'; 
 
             if ($current_db_status_qurban !== $new_status_qurban_for_warga) {
                 $stmt_update_final_status = $conn->prepare("UPDATE warga SET status_qurban = ? WHERE nik = ?");
@@ -283,12 +251,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $conn->commit();
         $_SESSION['message'] = "Data qurban " . ucfirst($jenis_hewan) . " berhasil diperbarui.";
         $_SESSION['message_type'] = "success";
-        header("Location: index.php"); // Redirect ke halaman daftar hewan qurban
+        header("Location: index.php");
         exit();
 
     } catch (mysqli_sql_exception $e) {
         $conn->rollback();
-        // Rollback status_qurban jika terjadi error
         foreach ($old_statuses_for_rollback as $nik_check => $old_status) {
             $stmt_rollback_status = $conn->prepare("UPDATE warga SET status_qurban = ? WHERE nik = ?");
             $stmt_rollback_status->bind_param("ss", $old_status, $nik_check);
@@ -298,18 +265,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = "Terjadi kesalahan saat memperbarui data qurban: " . $e->getMessage();
         $_SESSION['message'] = "Gagal memperbarui data qurban: " . $e->getMessage();
         $_SESSION['message_type'] = "error";
-        $_SESSION['form_data'] = $_POST; // Simpan data POST untuk ditampilkan kembali di form
-        header("Location: edit.php?id=" . urlencode($id_qurban)); // Redirect kembali ke form edit
+        $_SESSION['form_data'] = $_POST; 
+        header("Location: edit.php?id=" . urlencode($id_qurban)); 
         exit();
     }
 }
 
-
-// =========================================================================
-// Bagian Pengambilan Data untuk Tampilan Form (Jika bukan POST atau ada error POST)
-// =========================================================================
-
-// Ambil data hewan qurban dari database berdasarkan ID
 $stmt_get_data = $conn->prepare("SELECT id, jenis_hewan, harga, biaya_administrasi, tanggal_beli, estimasi_berat_daging_kg, nik_peserta_tunggal FROM hewan_qurban WHERE id = ?");
 $stmt_get_data->bind_param("i", $id_qurban);
 $stmt_get_data->execute();
@@ -323,11 +284,9 @@ if ($result_get_data->num_rows > 0) {
     $estimasi_berat_daging_kg = $qurban_data['estimasi_berat_daging_kg'];
     $tanggal_beli = $qurban_data['tanggal_beli'];
 
-    // Jika kambing, ambil NIK pesertanya
     if ($jenis_hewan === 'kambing') {
         $nik_peserta = $qurban_data['nik_peserta_tunggal'];
     }
-    // Jika sapi, ambil NIK peserta sapi
     elseif ($jenis_hewan === 'sapi') {
         $sql_current_peserta = "SELECT nik_warga FROM peserta_sapi WHERE id_hewan_qurban = ?";
         $stmt_current_peserta = $conn->prepare($sql_current_peserta);
@@ -347,8 +306,6 @@ if ($result_get_data->num_rows > 0) {
 }
 $stmt_get_data->close();
 
-// Jika ada data form dari session (setelah redirect karena error validasi), gunakan data itu
-// Ini akan menimpa nilai dari DB dengan nilai dari POST jika ada error
 if (isset($_SESSION['form_data'])) {
     $harga = $_SESSION['form_data']['harga'] ?? $harga;
     $biaya_administrasi = $_SESSION['form_data']['biaya_administrasi'] ?? $biaya_administrasi;
@@ -361,14 +318,11 @@ if (isset($_SESSION['form_data'])) {
     }
     unset($_SESSION['form_data']);
 }
-// Ambil pesan error dari session jika ada
 if (isset($_SESSION['errors'])) {
     $errors = array_merge($errors, $_SESSION['errors']);
     unset($_SESSION['errors']);
 }
 
-
-// Ambil daftar warga untuk dropdown peserta (baik kambing atau sapi)
 $sql_warga_peserta_select = "SELECT nik, nama, status_qurban, status_panitia FROM warga ORDER BY nama ASC";
 $result_warga_peserta_select = $conn->query($sql_warga_peserta_select);
 $list_warga = [];
@@ -378,11 +332,7 @@ if ($result_warga_peserta_select && $result_warga_peserta_select->num_rows > 0) 
     }
 }
 
-
-// =========================================================================
-// Bagian Tampilan HTML
-// =========================================================================
-include '../../includes/header.php'; // Sertakan header setelah semua logika PHP selesai
+include '../../includes/header.php';
 ?>
 
 <div class="d-sm-flex align-items-center justify-content-between mb-4">

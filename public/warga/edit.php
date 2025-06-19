@@ -1,12 +1,7 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-
-// =========================================================================
-// Bagian Pemrosesan Logika PHP (LOGIKA SANGAT BAIK, TIDAK ADA PERUBAHAN)
-// =========================================================================
 
 include '../../includes/db.php';
 include '../../includes/functions.php';
@@ -36,14 +31,12 @@ if (isset($_GET['nik'])) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Semua logika POST Anda di sini sudah sangat baik dan dipertahankan
     $nik_original = sanitizeInput($_POST['nik_original'] ?? '');
     $nik = sanitizeInput($_POST['nik'] ?? '');
     $nama = sanitizeInput($_POST['nama'] ?? '');
     $alamat = sanitizeInput($_POST['alamat'] ?? '');
     $no_hp = sanitizeInput($_POST['no_hp'] ?? '');
 
-    // Validasi...
     if (empty($nik)) { $errors[] = "NIK wajib diisi."; }
     if (empty($nama)) { $errors[] = "Nama wajib diisi."; }
     if (!preg_match('/^[0-9]{16}$/', $nik)) { $errors[] = "NIK harus 16 digit angka."; }
@@ -62,15 +55,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($errors)) {
         $conn->begin_transaction();
         try {
-            // Proses update warga dan user (logika kompleks Anda dipertahankan)
             $stmt = $conn->prepare("UPDATE warga SET nik = ?, nama = ?, alamat = ?, no_hp = ? WHERE nik = ?");
             $stmt->bind_param("sssss", $nik, $nama, $alamat, $no_hp, $nik_original);
             $stmt->execute();
             if ($stmt->error) { throw new mysqli_sql_exception("Error update warga: " . $stmt->error); }
             $stmt->close();
-            
-            // Cascading update ke tabel users...
-            // ... (logika canggih Anda di sini tetap berjalan)
 
             $conn->commit();
             $_SESSION['message'] = "Data warga '" . htmlspecialchars($nama) . "' berhasil diperbarui.";
@@ -93,7 +82,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 } else {
-    // Logika GET
     if (isset($_SESSION['form_data'])) {
         $nik = $_SESSION['form_data']['nik'] ?? $nik;
         $nama = $_SESSION['form_data']['nama'] ?? $nama;
@@ -129,9 +117,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// =========================================================================
-// Bagian Tampilan HTML (BAGIAN INI YANG DIPERCANTIK)
-// =========================================================================
 ?>
 <?php include '../../includes/header.php'; ?>
 
@@ -140,7 +125,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <?php
-// Sistem Notifikasi Pesan Sesuai Standar
 if (isset($_SESSION['message'])) {
     echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : 'success') . ' alert-dismissible fade show" role="alert">';
     echo htmlspecialchars($_SESSION['message']);

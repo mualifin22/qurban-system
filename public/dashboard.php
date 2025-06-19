@@ -1,9 +1,4 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
-// ini_set('display_errors', 1);
-// ini_set('display_startup_errors', 1);
-// error_reporting(E_ALL);
-
 include '../includes/db.php';
 include '../includes/functions.php';
 
@@ -19,22 +14,18 @@ $userRole = $_SESSION['role'];
 $username = $_SESSION['username'];
 $currentUser = getCurrentUser($conn);
 
-// --- Ambil Data untuk Ringkasan Dashboard ---
-// Total Hewan Qurban
 $total_hewan_qurban = 0;
 $result_hewan = $conn->query("SELECT COUNT(*) AS total FROM hewan_qurban");
 if ($result_hewan) {
     $total_hewan_qurban = $result_hewan->fetch_assoc()['total'];
 }
 
-// Total Pemasukan Keuangan
 $total_pemasukan_keuangan = 0;
 $result_pemasukan = $conn->query("SELECT SUM(jumlah) AS total FROM keuangan WHERE jenis = 'pemasukan'");
 if ($result_pemasukan) {
     $total_pemasukan_keuangan = $result_pemasukan->fetch_assoc()['total'];
 }
 
-// Total Pengeluaran Keuangan
 $total_pengeluaran_keuangan = 0;
 $result_pengeluaran = $conn->query("SELECT SUM(jumlah) AS total FROM keuangan WHERE jenis = 'pengeluaran'");
 if ($result_pengeluaran) {
@@ -42,24 +33,19 @@ if ($result_pengeluaran) {
 }
 $saldo_keuangan = $total_pemasukan_keuangan - $total_pengeluaran_keuangan;
 
-// Total Warga Terdaftar
 $total_warga = 0;
 $result_warga = $conn->query("SELECT COUNT(*) AS total FROM warga");
 if ($result_warga) {
     $total_warga = $result_warga->fetch_assoc()['total'];
 }
 
-// Total Penerima Daging (dari rencana pembagian)
 $total_penerima_daging = 0;
 $result_penerima_daging = $conn->query("SELECT COUNT(DISTINCT nik_warga) AS total FROM pembagian_daging");
 if ($result_penerima_daging) {
     $total_penerima_daging = $result_penerima_daging->fetch_assoc()['total'];
 }
 
-// =========================================================================
-// Bagian Tampilan HTML (Dimulai setelah semua logika PHP selesai)
-// =========================================================================
-include '../includes/header.php'; // HEADER BARU
+include '../includes/header.php'; 
 ?>
 
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
@@ -67,7 +53,6 @@ include '../includes/header.php'; // HEADER BARU
 </div>
 
 <?php
-// Tampilkan pesan sukses/error/info (yang kita simpan di $_SESSION)
 if (isset($_SESSION['message'])) {
     echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : ($_SESSION['message_type'] == 'info' ? 'info' : 'success')) . ' alert-dismissible fade show" role="alert">';
     echo htmlspecialchars($_SESSION['message']);

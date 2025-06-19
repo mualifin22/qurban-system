@@ -1,12 +1,7 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-
-// =========================================================================
-// Bagian Pemrosesan Logika PHP (LOGIKA SUDAH BAIK, TIDAK ADA PERUBAHAN)
-// =========================================================================
 
 include '../../includes/db.php';
 include '../../includes/functions.php';
@@ -23,7 +18,7 @@ $nik = '';
 $nama = '';
 $alamat = '';
 $no_hp = '';
-$create_user = 0; // Default checkbox tidak tercentang
+$create_user = 0; 
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -33,12 +28,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $no_hp = sanitizeInput($_POST['no_hp'] ?? '');
     $create_user = isset($_POST['create_user']) ? 1 : 0;
 
-    // Validasi
     if (empty($nik)) { $errors[] = "NIK wajib diisi."; }
     if (empty($nama)) { $errors[] = "Nama wajib diisi."; }
     if (!preg_match('/^[0-9]{16}$/', $nik)) { $errors[] = "NIK harus terdiri dari 16 digit angka."; }
 
-    if (empty($errors)) { // Hanya cek duplikasi jika validasi dasar lolos
+    if (empty($errors)) {
         $stmt_check_nik = $conn->prepare("SELECT nik FROM warga WHERE nik = ?");
         $stmt_check_nik->bind_param("s", $nik);
         $stmt_check_nik->execute();
@@ -49,11 +43,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt_check_nik->close();
     }
     
-    // Proses jika tidak ada error sama sekali
     if (empty($errors)) {
         $conn->begin_transaction();
         try {
-            // 1. Masukkan data warga baru
             $status_qurban_default = 'penerima';
             $stmt_warga = $conn->prepare("INSERT INTO warga (nik, nama, alamat, no_hp, status_qurban) VALUES (?, ?, ?, ?, ?)");
             $stmt_warga->bind_param("sssss", $nik, $nama, $alamat, $no_hp, $status_qurban_default);
@@ -63,10 +55,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $stmt_warga->close();
 
-            // 2. Buat user login jika dicentang
             if ($create_user) {
                 $username_user = $nik;
-                $password_default = hashPassword('password'); // Password default
+                $password_default = hashPassword('password'); 
                 $role_user = 'warga';
                 $stmt_user = $conn->prepare("INSERT INTO users (username, password, role, nik_warga) VALUES (?, ?, ?, ?)");
                 $stmt_user->bind_param("ssss", $username_user, $password_default, $role_user, $nik);
@@ -115,9 +106,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// =========================================================================
-// Bagian Tampilan HTML (BAGIAN INI YANG DIPERCANTIK)
-// =========================================================================
 ?>
 <?php include '../../includes/header.php'; ?>
 
@@ -126,7 +114,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <?php
-// Sistem Notifikasi Pesan Sesuai Standar
 if (isset($_SESSION['message'])) {
     echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : 'success') . ' alert-dismissible fade show" role="alert">';
     echo htmlspecialchars($_SESSION['message']);

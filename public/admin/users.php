@@ -1,9 +1,4 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
-// ini_set('display_errors', 1);
-// ini_set('display_startup_errors', 1);
-// error_reporting(E_ALL);
-
 include '../../includes/db.php';
 include '../../includes/functions.php';
 
@@ -11,7 +6,6 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Hanya Admin yang bisa mengakses halaman ini
 if (!isAdmin()) {
     $_SESSION['message'] = "Anda tidak memiliki akses ke halaman ini.";
     $_SESSION['message_type'] = "error";
@@ -19,7 +13,6 @@ if (!isAdmin()) {
     exit();
 }
 
-// Ambil data user dari database
 $sql = "SELECT u.id, u.username, u.role, u.created_at, w.nama as warga_nama, w.nik as warga_nik, w.status_qurban, w.status_panitia
         FROM users u
         LEFT JOIN warga w ON u.nik_warga = w.nik
@@ -33,8 +26,6 @@ if ($result->num_rows > 0) {
     }
 }
 
-
-// Bagian Tampilan HTML
 include '../../includes/header.php';
 ?>
 
@@ -46,7 +37,6 @@ include '../../includes/header.php';
 </div>
 
 <?php
-// Tampilkan pesan sukses/error/info (yang kita simpan di $_SESSION)
 if (isset($_SESSION['message'])) {
     echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : ($_SESSION['message_type'] == 'info' ? 'info' : 'success')) . ' alert-dismissible fade show" role="alert">';
     echo htmlspecialchars($_SESSION['message']);
@@ -104,7 +94,6 @@ if (isset($_SESSION['message'])) {
                             echo "<td>" . (($user['status_panitia'] ?? false) ? 'Ya' : 'Tidak') . "</td>";
                             echo "<td>" . htmlspecialchars($user['created_at']) . "</td>";
                             echo '<td>';
-                            // Admin tidak bisa menghapus/mengedit akun admin utama (ID 1)
                             if ($user['id'] == 1 && $user['username'] == 'admin') {
                                 echo '<span class="text-info font-weight-bold">(Admin Utama)</span>';
                             } else {

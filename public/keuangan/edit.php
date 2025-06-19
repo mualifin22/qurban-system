@@ -1,12 +1,7 @@
 <?php
-// Aktifkan pelaporan error untuk debugging. Hapus ini di lingkungan produksi.
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-
-// =========================================================================
-// Bagian Pemrosesan Logika PHP (Struktur disesuaikan dengan referensi)
-// =========================================================================
 
 include '../../includes/db.php';
 include '../../includes/functions.php';
@@ -15,7 +10,6 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Hanya Admin yang bisa mengakses halaman ini (Sama seperti referensi)
 if (!isAdmin()) {
     $_SESSION['message'] = "Anda tidak memiliki akses ke halaman ini.";
     $_SESSION['message_type'] = "error";
@@ -23,7 +17,6 @@ if (!isAdmin()) {
     exit();
 }
 
-// Ambil ID dari URL (GET) atau dari form (POST)
 $id_transaksi = '';
 if (isset($_GET['id'])) {
     $id_transaksi = sanitizeInput($_GET['id']);
@@ -36,22 +29,18 @@ if (isset($_GET['id'])) {
     exit();
 }
 
-// Inisialisasi variabel
 $jenis = '';
 $keterangan = '';
 $jumlah = '';
 $tanggal = date('Y-m-d');
 $errors = [];
 
-// Proses form jika metode adalah POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Ambil dan sanitasi data dari form
     $jenis = sanitizeInput($_POST['jenis'] ?? '');
     $keterangan = sanitizeInput($_POST['keterangan'] ?? '');
     $jumlah = sanitizeInput($_POST['jumlah'] ?? '');
     $tanggal = sanitizeInput($_POST['tanggal'] ?? '');
 
-    // Validasi
     if (empty($jenis) || !in_array($jenis, ['pemasukan', 'pengeluaran'])) {
         $errors[] = "Jenis transaksi tidak valid.";
     }
@@ -92,23 +81,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit();
         }
     } else {
-        // Jika ada error validasi, gunakan pola PRG
         $_SESSION['errors'] = $errors;
         $_SESSION['form_data'] = $_POST;
         header("Location: edit_keuangan.php?id=" . urlencode($id_transaksi));
         exit();
     }
 } else {
-    // Jika bukan POST, ambil data dari DB atau dari session (jika ada redirect error)
     if (isset($_SESSION['form_data'])) {
-        // Ambil data dari session untuk 'sticky form'
         $jenis = $_SESSION['form_data']['jenis'] ?? '';
         $keterangan = $_SESSION['form_data']['keterangan'] ?? '';
         $jumlah = $_SESSION['form_data']['jumlah'] ?? '';
         $tanggal = $_SESSION['form_data']['tanggal'] ?? '';
         unset($_SESSION['form_data']);
     } else {
-        // Ambil data asli dari database
         $stmt_get = $conn->prepare("SELECT id, jenis, keterangan, jumlah, tanggal, id_hewan_qurban FROM keuangan WHERE id = ?");
         $stmt_get->bind_param("i", $id_transaksi);
         $stmt_get->execute();
@@ -117,7 +102,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($result_get->num_rows > 0) {
             $transaksi_data = $result_get->fetch_assoc();
             
-            // Logika penting: jangan izinkan edit transaksi dari qurban
             if (!empty($transaksi_data['id_hewan_qurban'])) {
                 $_SESSION['message'] = "Transaksi ini terkait qurban dan tidak dapat diubah di sini.";
                 $_SESSION['message_type'] = "error";
@@ -138,16 +122,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt_get->close();
     }
     
-    // Ambil error dari session jika ada
     if (isset($_SESSION['errors'])) {
         $errors = $_SESSION['errors'];
         unset($_SESSION['errors']);
     }
 }
 
-// =========================================================================
-// Bagian Tampilan HTML (Struktur disesuaikan dengan referensi)
-// =========================================================================
 ?>
 <?php include '../../includes/header.php'; ?>
 
@@ -156,7 +136,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <?php
-// Tampilkan pesan sukses/error/info dari $_SESSION (Sesuai Referensi)
 if (isset($_SESSION['message'])) {
     echo '<div class="alert alert-' . ($_SESSION['message_type'] == 'error' ? 'danger' : 'success') . ' alert-dismissible fade show" role="alert">';
     echo htmlspecialchars($_SESSION['message']);
@@ -166,7 +145,6 @@ if (isset($_SESSION['message'])) {
     unset($_SESSION['message_type']);
 }
 
-// Tampilkan pesan error validasi dari array $errors (Sesuai Referensi)
 if (!empty($errors)) {
     echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">';
     echo '<strong>Error!</strong> Mohon perbaiki kesalahan berikut:<ul>';
